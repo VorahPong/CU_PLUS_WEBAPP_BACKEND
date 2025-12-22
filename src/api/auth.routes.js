@@ -1,31 +1,9 @@
 const express = require("express");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
-const prisma = require("./prisma");
+const prisma = require("../prisma");
 
 const router = express.Router();
-
-router.post("/register", async (req, res) => {
-	try {
-		const { email, password, name } = req.body;
-		if (!email || !password)
-			return res.status(400).json({ message: "email and password required" });
-
-		const exists = await prisma.user.findUnique({ where: { email } });
-		if (exists)
-			return res.status(409).json({ message: "email already exists" });
-
-		const hash = await bcrypt.hash(password, 10);
-		const user = await prisma.user.create({
-			data: { email, password: hash, name: name ?? null },
-			select: { id: true, email: true, name: true, role: true },
-		});
-
-		res.status(201).json({ user });
-	} catch (e) {
-		res.status(500).json({ message: "server error", error: String(e) });
-	}
-});
 
 router.post("/login", async (req, res) => {
 	try {

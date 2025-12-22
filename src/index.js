@@ -12,7 +12,7 @@ app.get("/health", (req, res) => {
 });
 
 // auth routes
-const authRoutes = require("./auth.routes");
+const authRoutes = require("./api/auth.routes");
 app.use("/auth", authRoutes);
 
 // start server
