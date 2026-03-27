@@ -1,7 +1,7 @@
 const express = require("express");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
-const prisma = require("../prisma");
+const prisma = require("../../prisma");
 
 const router = express.Router();
 
@@ -28,7 +28,11 @@ router.post("/login", async (req, res) => {
 			user: {
 				id: user.id,
 				email: user.email,
+				firstName: user.firstName,
+				lastName: user.lastName,
 				name: user.name,
+				schoolId: user.schoolId,
+				year: user.year,
 				role: user.role,
 			},
 		});

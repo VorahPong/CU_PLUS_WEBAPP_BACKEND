@@ -11,9 +11,12 @@ app.get("/health", (req, res) => {
 	res.json({ ok: true, message: "backend is running" });
 });
 
-// auth routes
-const authRoutes = require("./api/auth.routes");
+// feature routes
+const authRoutes = require("./features/auth/auth.routes");
+const adminStudentsRoutes = require("./features/students/admin.students.routes");
+
 app.use("/auth", authRoutes);
+app.use("/admin/students", adminStudentsRoutes);
 
 // start server
 const PORT = process.env.PORT || 4000;
