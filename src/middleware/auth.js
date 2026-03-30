@@ -1,28 +1,47 @@
-const jwt = require("jsonwebtoken");
+const crypto = require("crypto");
+const prisma = require("../prisma");
 
-function requireAuth(req, res, next) {
-	const authHeader = req.headers.authorization || "";
-	const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : null;
+function hashToken(token) {
+	return crypto.createHash("sha256").update(token).digest("hex");
+}
 
-	if (!token) {
-		return res.status(401).json({ message: "Unauthorized" });
-	}
-
+async function requireAuth(req, res, next) {
 	try {
-		const payload = jwt.verify(
-			token,
-			process.env.JWT_SECRET || "dev_secret_change_me",
-		);
+		const rawToken = req.cookies?.session_id;
+
+		if (!rawToken) {
+			return res.status(401).json({ message: "Unauthorized" });
+		}
+
+		const tokenHash = hashToken(rawToken);
+
+		const session = await prisma.session.findUnique({
+			where: { tokenHash },
+			include: { user: true },
+		});
+
+		if (!session) {
+			return res.status(401).json({ message: "Invalid session" });
+		}
+
+		if (session.revokedAt) {
+			return res.status(401).json({ message: "Session revoked" });
+		}
+
+		if (new Date(session.expiresAt) < new Date()) {
+			return res.status(401).json({ message: "Session expired" });
+		}
 
 		req.user = {
-			id: payload.sub,
-			email: payload.email,
-			role: payload.role,
+			id: session.user.id,
+			email: session.user.email,
+			role: session.user.role,
 		};
 
+		req.session = session;
 		next();
-	} catch (err) {
-		return res.status(401).json({ message: "Invalid or expired token" });
+	} catch (e) {
+		return res.status(500).json({ message: "Server error", error: String(e) });
 	}
 }
 
