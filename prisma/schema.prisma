@@ -21,6 +21,7 @@ model User {
   updatedAt     DateTime       @updatedAt
 
   announcements Announcement[] @relation("AnnouncementAuthor")
+  sessions Session[]
 }
 
 model Announcement {
@@ -37,8 +38,6 @@ model Announcement {
 
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
-
-  sessions Session[]
 }
 
 model Session {
