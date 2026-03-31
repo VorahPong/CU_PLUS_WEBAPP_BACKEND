@@ -19,4 +19,19 @@ model User {
   role       String   @default("student")
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
+
+  sessions Session[]
+}
+
+model Session {
+  id           String   @id @default(uuid())
+  userId       String
+  tokenHash    String   @unique
+  expiresAt    DateTime
+  createdAt    DateTime @default(now())
+  revokedAt    DateTime?
+
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
