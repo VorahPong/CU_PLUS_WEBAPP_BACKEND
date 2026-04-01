@@ -8,19 +8,36 @@ datasource db {
 }
 
 model User {
-  id         String   @id @default(uuid())
-  email      String   @unique
-  password   String
-  firstName  String
-  lastName   String
-  name       String?
-  schoolId   String   @unique
-  year       String
-  role       String   @default("student")
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  id            String         @id @default(uuid())
+  email         String         @unique
+  password      String
+  firstName     String
+  lastName      String
+  name          String?
+  schoolId      String         @unique
+  year          String
+  role          String         @default("student")
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
 
+  announcements Announcement[] @relation("AnnouncementAuthor")
   sessions Session[]
+}
+
+model Announcement {
+  id          String   @id @default(uuid())
+  message     String
+  everyone    Boolean  @default(false)
+  firstYear   Boolean  @default(false)
+  secondYear  Boolean  @default(false)
+  thirdYear   Boolean  @default(false)
+  fourthYear  Boolean  @default(false)
+
+  authorId    String
+  author      User     @relation("AnnouncementAuthor", fields: [authorId], references: [id])
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }
 
 model Session {
