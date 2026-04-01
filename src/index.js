@@ -22,8 +22,10 @@ app.get("/health", (req, res) => {
 // feature routes
 const authRoutes = require("./features/auth/auth.routes");
 const adminStudentsRoutes = require("./features/admin/admin.students.routes");
+const adminAnnouncementsRoutes = require("./features/announcements/admin.announcements.routes");
 
 app.use("/auth", authRoutes);
+app.use("/admin/announcements", adminAnnouncementsRoutes);
 app.use("/admin/students", adminStudentsRoutes);
 
 // start server
