@@ -37,9 +37,12 @@ CU_PLUS_WEBAPP_BACKEND/
 │   │   └── auth.js        # requireAuth / requireAdmin (JWT + session validation)
 │   └── features/
 │       ├── auth/
-│       │   └── auth.routes.js        # login, logout, session endpoints
-│       └── students/
-│           └── admin.students.routes.js  # admin-only student CRUD
+│       │   └── auth.routes.js
+│       ├── manageStudent/
+│       │   └── admin.students.routes.js   # admin-only student CRUD
+│       └── announcements/
+│           ├── admin.announcements.routes.js   # admin CRUD for announcements
+│           └── student.announcements.route.js  # student filtered announcements feed
 ├── .env
 ├── package.json
 └── README.md
@@ -214,11 +217,30 @@ router.post("/", requireAuth, requireAdmin, async (req, res) => {
 });
 ```
 
-### Session Behavior
+## Announcements API
 
-- Each login creates a new session
-- Sessions expire based on `SESSION_EXPIRES_IN_DAYS`
-- Expired sessions are not automatically deleted (recommended: cron cleanup)
+### Admin (Protected)
+- `GET /admin/announcements` → fetch all announcements
+- `POST /admin/announcements` → create announcement
+- `DELETE /admin/announcements/:id` → delete announcement
+
+Requires:
+- `requireAuth`
+- `requireAdmin`
+
+### Student Feed (Protected)
+- `GET /student/announcements/my-feed`
+
+Returns:
+- announcements where:
+  - `everyone = true`
+  - OR matches student's year (firstYear, secondYear, etc.)
+
+Example:
+```bash
+curl http://localhost:4000/student/announcements/my-feed \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
 
 ---
 
@@ -276,3 +298,13 @@ curl -X POST http://localhost:4000/admin/students \
 
 - **Admin routes blocked**:
   - Ensure user role is `admin`
+
+- **TypeError: argument handler must be a function**:
+  - Ensure all route files export router:
+    ```js
+    module.exports = router;
+    ```
+  - Ensure route paths start with `/` in `app.use()`:
+    ```js
+    app.use('/student/announcements', routes);
+    ```
