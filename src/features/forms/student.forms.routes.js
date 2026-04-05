@@ -5,6 +5,22 @@ const { requireAuth } = require("../../middleware/auth");
 const router = express.Router();
 
 /**
+ * @swagger
+ * /student/forms:
+ *   get:
+ *     summary: Get forms available to the current student
+ *     tags: [Student Forms]
+ *     responses:
+ *       200:
+ *         description: List of forms available to the student
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: User not found
+ *       500:
+ *         description: Server error
+ */
+/**
  * GET /student/forms
  * Fetch forms available to current student
  */
@@ -47,6 +63,29 @@ router.get("/", requireAuth, async (req, res) => {
 	}
 });
 
+/**
+ * @swagger
+ * /student/forms/{id}:
+ *   get:
+ *     summary: Get a single form available to the current student
+ *     tags: [Student Forms]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Form template ID
+ *     responses:
+ *       200:
+ *         description: Form returned successfully
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: User not found or form not available to this student
+ *       500:
+ *         description: Server error
+ */
 /**
  * GET /student/forms/:id
  * Fetch one form for current student
@@ -97,6 +136,70 @@ router.get("/:id", requireAuth, async (req, res) => {
 	}
 });
 
+/**
+ * @swagger
+ * /student/forms/{id}/submissions:
+ *   post:
+ *     summary: Create or update the current student's submission for a form
+ *     tags: [Student Forms]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Form template ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - answers
+ *             properties:
+ *               submitNow:
+ *                 type: boolean
+ *                 example: true
+ *               answers:
+ *                 type: array
+ *                 items:
+ *                   type: object
+ *                   required:
+ *                     - formFieldId
+ *                   properties:
+ *                     formFieldId:
+ *                       type: string
+ *                       example: c7c4f5a2-1e11-4f5f-a7ef-4f6f6d8f1234
+ *                     valueText:
+ *                       type: string
+ *                       nullable: true
+ *                       example: Vorahpong Mean
+ *                     valueBoolean:
+ *                       type: boolean
+ *                       nullable: true
+ *                       example: true
+ *                     valueDate:
+ *                       type: string
+ *                       format: date-time
+ *                       nullable: true
+ *                       example: 2026-04-05T00:00:00.000Z
+ *                     valueSignatureUrl:
+ *                       type: string
+ *                       nullable: true
+ *                       example: https://example.com/signatures/student-signature.png
+ *     responses:
+ *       201:
+ *         description: Form submitted or draft saved successfully
+ *       400:
+ *         description: Validation error
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: User not found or form not available to this student
+ *       500:
+ *         description: Server error
+ */
 /**
  * POST /student/forms/:id/submissions
  * Create or update a student's submission

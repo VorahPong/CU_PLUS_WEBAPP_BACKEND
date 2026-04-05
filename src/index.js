@@ -3,6 +3,9 @@ const cors = require("cors");
 const cookieParser = require("cookie-parser");
 require("dotenv").config();
 
+const swaggerUi = require("swagger-ui-express");
+const swaggerSpec = require("./swagger");
+
 const app = express();
 app.use(
 	cors({
@@ -36,6 +39,8 @@ app.use("/student/announcements", studentAnnouncementsRoutes);
 
 app.use("/admin/forms", adminFormsRoutes);
 app.use("/student/forms", studentFormsRoutes);
+
+app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
 // start server
 const PORT = process.env.PORT || 4000;

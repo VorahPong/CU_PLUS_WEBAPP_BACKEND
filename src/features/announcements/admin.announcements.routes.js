@@ -4,7 +4,51 @@ const { requireAuth, requireAdmin } = require("../../middleware/auth");
 
 const router = express.Router();
 
-// POST /admin/announcements
+/**
+ * @swagger
+ * /admin/announcements:
+ *   post:
+ *     summary: Create a new announcement
+ *     tags: [Admin Announcements]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - message
+ *             properties:
+ *               message:
+ *                 type: string
+ *                 example: Classes are canceled tomorrow
+ *               everyone:
+ *                 type: boolean
+ *                 example: true
+ *               firstYear:
+ *                 type: boolean
+ *                 example: false
+ *               secondYear:
+ *                 type: boolean
+ *                 example: false
+ *               thirdYear:
+ *                 type: boolean
+ *                 example: false
+ *               fourthYear:
+ *                 type: boolean
+ *                 example: false
+ *     responses:
+ *       201:
+ *         description: Announcement created successfully
+ *       400:
+ *         description: Validation error
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Admin access required
+ *       500:
+ *         description: Server error
+ */
 router.post("/", requireAuth, requireAdmin, async (req, res) => {
 	try {
 		const {
@@ -67,7 +111,22 @@ router.post("/", requireAuth, requireAdmin, async (req, res) => {
 	}
 });
 
-// GET /admin/announcements
+/**
+ * @swagger
+ * /admin/announcements:
+ *   get:
+ *     summary: Get all announcements
+ *     tags: [Admin Announcements]
+ *     responses:
+ *       200:
+ *         description: List of announcements
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Admin access required
+ *       500:
+ *         description: Server error
+ */
 router.get("/", requireAuth, requireAdmin, async (req, res) => {
 	try {
 		const announcements = await prisma.announcement.findMany({
@@ -95,7 +154,31 @@ router.get("/", requireAuth, requireAdmin, async (req, res) => {
 	}
 });
 
-// DELETE /admin/announcements/:id
+/**
+ * @swagger
+ * /admin/announcements/{id}:
+ *   delete:
+ *     summary: Delete an announcement
+ *     tags: [Admin Announcements]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Announcement ID
+ *     responses:
+ *       200:
+ *         description: Announcement deleted successfully
+ *       404:
+ *         description: Announcement not found
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Admin access required
+ *       500:
+ *         description: Server error
+ */
 router.delete("/:id", requireAuth, requireAdmin, async (req, res) => {
 	try {
 		const { id } = req.params;
@@ -125,7 +208,55 @@ router.delete("/:id", requireAuth, requireAdmin, async (req, res) => {
 	}
 });
 
-// PUT /admin/announcements/:id
+/**
+ * @swagger
+ * /admin/announcements/{id}:
+ *   put:
+ *     summary: Update an announcement
+ *     tags: [Admin Announcements]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Announcement ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - message
+ *             properties:
+ *               message:
+ *                 type: string
+ *                 example: Updated announcement message
+ *               everyone:
+ *                 type: boolean
+ *               firstYear:
+ *                 type: boolean
+ *               secondYear:
+ *                 type: boolean
+ *               thirdYear:
+ *                 type: boolean
+ *               fourthYear:
+ *                 type: boolean
+ *     responses:
+ *       200:
+ *         description: Announcement updated successfully
+ *       400:
+ *         description: Validation error
+ *       404:
+ *         description: Announcement not found
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Admin access required
+ *       500:
+ *         description: Server error
+ */
 router.put("/:id", requireAuth, requireAdmin, async (req, res) => {
 	try {
 		const { id } = req.params;

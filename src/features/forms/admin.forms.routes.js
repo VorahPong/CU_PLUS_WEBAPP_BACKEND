@@ -5,8 +5,83 @@ const { requireAuth, requireAdmin } = require("../../middleware/auth");
 const router = express.Router();
 
 /**
- * POST /admin/forms
- * Create a new form template with fields
+ * @swagger
+ * /admin/forms:
+ *   post:
+ *     summary: Create a new form template with fields
+ *     tags: [Admin Forms]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - title
+ *               - fields
+ *             properties:
+ *               title:
+ *                 type: string
+ *                 example: 1st Year - Mid-Semester Grade Check - Fall
+ *               description:
+ *                 type: string
+ *                 nullable: true
+ *                 example: Mid-semester grade check form
+ *               year:
+ *                 type: string
+ *                 nullable: true
+ *                 example: "1"
+ *               dueDate:
+ *                 type: string
+ *                 format: date-time
+ *                 nullable: true
+ *                 example: 2026-10-20T23:59:00.000Z
+ *               instructions:
+ *                 type: string
+ *                 nullable: true
+ *                 example: Please complete all fields before the due date.
+ *               fields:
+ *                 type: array
+ *                 items:
+ *                   type: object
+ *                   required:
+ *                     - label
+ *                     - type
+ *                   properties:
+ *                     label:
+ *                       type: string
+ *                       example: Student Name
+ *                     type:
+ *                       type: string
+ *                       example: text
+ *                     required:
+ *                       type: boolean
+ *                       example: true
+ *                     placeholder:
+ *                       type: string
+ *                       nullable: true
+ *                       example: Enter your full name
+ *                     helpText:
+ *                       type: string
+ *                       nullable: true
+ *                       example: Use your legal name
+ *                     sortOrder:
+ *                       type: integer
+ *                       example: 0
+ *                     configJson:
+ *                       type: object
+ *                       nullable: true
+ *     responses:
+ *       201:
+ *         description: Form created successfully
+ *       400:
+ *         description: Validation error
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Admin access required
+ *       500:
+ *         description: Server error
  */
 router.post("/", requireAuth, requireAdmin, async (req, res) => {
 	try {
@@ -99,8 +174,20 @@ router.post("/", requireAuth, requireAdmin, async (req, res) => {
 });
 
 /**
- * GET /admin/forms
- * Fetch all form templates
+ * @swagger
+ * /admin/forms:
+ *   get:
+ *     summary: Get all form templates
+ *     tags: [Admin Forms]
+ *     responses:
+ *       200:
+ *         description: List of form templates
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Admin access required
+ *       500:
+ *         description: Server error
  */
 router.get("/", requireAuth, requireAdmin, async (req, res) => {
 	try {
@@ -136,8 +223,29 @@ router.get("/", requireAuth, requireAdmin, async (req, res) => {
 });
 
 /**
- * GET /admin/forms/:id
- * Fetch one form template
+ * @swagger
+ * /admin/forms/{id}:
+ *   get:
+ *     summary: Get a single form template
+ *     tags: [Admin Forms]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Form template ID
+ *     responses:
+ *       200:
+ *         description: Form returned successfully
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Admin access required
+ *       404:
+ *         description: Form not found
+ *       500:
+ *         description: Server error
  */
 router.get("/:id", requireAuth, requireAdmin, async (req, res) => {
 	try {
@@ -176,8 +284,83 @@ router.get("/:id", requireAuth, requireAdmin, async (req, res) => {
 });
 
 /**
- * PUT /admin/forms/:id
- * Update form template + replace fields
+ * @swagger
+ * /admin/forms/{id}:
+ *   put:
+ *     summary: Update a form template and replace its fields
+ *     tags: [Admin Forms]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Form template ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - title
+ *               - fields
+ *             properties:
+ *               title:
+ *                 type: string
+ *               description:
+ *                 type: string
+ *                 nullable: true
+ *               year:
+ *                 type: string
+ *                 nullable: true
+ *               dueDate:
+ *                 type: string
+ *                 format: date-time
+ *                 nullable: true
+ *               instructions:
+ *                 type: string
+ *                 nullable: true
+ *               isActive:
+ *                 type: boolean
+ *               fields:
+ *                 type: array
+ *                 items:
+ *                   type: object
+ *                   required:
+ *                     - label
+ *                     - type
+ *                   properties:
+ *                     label:
+ *                       type: string
+ *                     type:
+ *                       type: string
+ *                     required:
+ *                       type: boolean
+ *                     placeholder:
+ *                       type: string
+ *                       nullable: true
+ *                     helpText:
+ *                       type: string
+ *                       nullable: true
+ *                     sortOrder:
+ *                       type: integer
+ *                     configJson:
+ *                       type: object
+ *                       nullable: true
+ *     responses:
+ *       200:
+ *         description: Form updated successfully
+ *       400:
+ *         description: Validation error
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Admin access required
+ *       404:
+ *         description: Form not found
+ *       500:
+ *         description: Server error
  */
 router.put("/:id", requireAuth, requireAdmin, async (req, res) => {
 	try {
@@ -288,8 +471,27 @@ router.put("/:id", requireAuth, requireAdmin, async (req, res) => {
 });
 
 /**
- * GET /admin/forms/:id/submissions
- * Fetch submissions for one form
+ * @swagger
+ * /admin/forms/{id}/submissions:
+ *   get:
+ *     summary: Get submissions for a form
+ *     tags: [Admin Forms]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Form template ID
+ *     responses:
+ *       200:
+ *         description: List of submissions for the form
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Admin access required
+ *       500:
+ *         description: Server error
  */
 router.get("/:id/submissions", requireAuth, requireAdmin, async (req, res) => {
 	try {
@@ -330,8 +532,29 @@ router.get("/:id/submissions", requireAuth, requireAdmin, async (req, res) => {
 });
 
 /**
- * GET /admin/submissions/:id
- * Fetch full submission with answers
+ * @swagger
+ * /admin/forms/submissions/{submissionId}/detail:
+ *   get:
+ *     summary: Get full submission detail with answers
+ *     tags: [Admin Forms]
+ *     parameters:
+ *       - in: path
+ *         name: submissionId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Submission ID
+ *     responses:
+ *       200:
+ *         description: Submission returned successfully
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Admin access required
+ *       404:
+ *         description: Submission not found
+ *       500:
+ *         description: Server error
  */
 router.get(
 	"/submissions/:submissionId/detail",
@@ -394,8 +617,53 @@ router.get(
 );
 
 /**
- * PATCH /admin/submissions/:id/review
- * Review / grade a submission
+ * @swagger
+ * /admin/forms/submissions/{submissionId}/review:
+ *   patch:
+ *     summary: Review or grade a submission
+ *     tags: [Admin Forms]
+ *     parameters:
+ *       - in: path
+ *         name: submissionId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Submission ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               status:
+ *                 type: string
+ *                 example: graded
+ *               grade:
+ *                 type: string
+ *                 nullable: true
+ *                 example: A
+ *               score:
+ *                 type: number
+ *                 nullable: true
+ *                 example: 95
+ *               feedback:
+ *                 type: string
+ *                 nullable: true
+ *                 example: Great work. Please keep copies of all supporting documents.
+ *     responses:
+ *       200:
+ *         description: Submission reviewed successfully
+ *       400:
+ *         description: Validation error
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Admin access required
+ *       404:
+ *         description: Submission not found
+ *       500:
+ *         description: Server error
  */
 router.patch(
 	"/submissions/:submissionId/review",
