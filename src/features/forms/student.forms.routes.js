@@ -118,7 +118,6 @@ router.get("/:id", requireAuth, async (req, res) => {
 			where: {
 				id,
 				isActive: true,
-				OR: [{ year: null }, { year: user.year }],
 			},
 			include: {
 				fields: {
@@ -129,11 +128,29 @@ router.get("/:id", requireAuth, async (req, res) => {
 
 		if (!form) {
 			return res.status(404).json({
-				message: "Form not found or not available to this student",
+				message: "Form not found",
 			});
 		}
 
-		return res.json({ form });
+		const submission = await prisma.formSubmission.findUnique({
+			where: {
+				formTemplateId_studentId: {
+					formTemplateId: form.id,
+					studentId: user.id,
+				},
+			},
+			include: {
+				answers: true,
+			},
+		});
+
+		return res.json({
+			form: {
+				...form,
+				isAvailableToStudent: !form.year || form.year === user.year,
+			},
+			submission,
+		});
 	} catch (e) {
 		return res.status(500).json({
 			message: "Server error",
@@ -252,6 +269,25 @@ router.post("/:id/submissions", requireAuth, async (req, res) => {
 			});
 		}
 
+		const existingSubmitted = await prisma.formSubmission.findUnique({
+			where: {
+				formTemplateId_studentId: {
+					formTemplateId: form.id,
+					studentId: user.id,
+				},
+			},
+			select: {
+				id: true,
+				status: true,
+			},
+		});
+
+		if (existingSubmitted && existingSubmitted.status !== "draft") {
+			return res.status(409).json({
+				message: "You have already submitted this form",
+			});
+		}
+
 		const fieldMap = new Map(form.fields.map((f) => [f.id, f]));
 
 		for (const answer of answers) {
@@ -361,7 +397,7 @@ router.post("/:id/submissions", requireAuth, async (req, res) => {
 	}
 });
 
-router.post("/signature", async (req, res) => {
+router.post("/signature", requireAuth, async (req, res) => {
 	try {
 		const { dataUrl } = req.body;
 
