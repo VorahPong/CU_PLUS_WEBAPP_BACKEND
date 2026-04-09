@@ -1,6 +1,7 @@
 const express = require("express");
 const prisma = require("../../prisma");
 const { requireAuth } = require("../../middleware/auth");
+const cloudinary = require("../../cloudinary");
 
 const router = express.Router();
 
@@ -44,7 +45,7 @@ router.get("/", requireAuth, async (req, res) => {
 		const forms = await prisma.formTemplate.findMany({
 			where: {
 				isActive: true,
-				OR: [{ year: null }, { year: user.year }],
+				// OR: [{ year: null }, { year: user.year }],
 			},
 			orderBy: { createdAt: "desc" },
 			include: {
@@ -54,7 +55,12 @@ router.get("/", requireAuth, async (req, res) => {
 			},
 		});
 
-		return res.json({ forms });
+		const formsWithAvailability = forms.map((form) => ({
+			...form,
+			isAvailableToStudent: !form.year || form.year === user.year,
+		}));
+
+		return res.json({ forms: formsWithAvailability });
 	} catch (e) {
 		return res.status(500).json({
 			message: "Server error",
@@ -352,6 +358,33 @@ router.post("/:id/submissions", requireAuth, async (req, res) => {
 			message: "Server error",
 			error: String(e),
 		});
+	}
+});
+
+router.post("/signature", async (req, res) => {
+	try {
+		const { dataUrl } = req.body;
+
+		if (!dataUrl || typeof dataUrl !== "string") {
+			return res.status(400).json({ message: "No image provided" });
+		}
+
+		if (!dataUrl.startsWith("data:image/")) {
+			return res.status(400).json({ message: "Invalid image format" });
+		}
+
+		const result = await cloudinary.uploader.upload(dataUrl, {
+			folder: "cuplus/signatures",
+			resource_type: "image",
+			format: "png",
+		});
+
+		return res.json({
+			url: result.secure_url,
+		});
+	} catch (error) {
+		console.error(error);
+		return res.status(500).json({ message: "Upload failed" });
 	}
 });
 
