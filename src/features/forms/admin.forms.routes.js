@@ -1,0 +1,736 @@
+const express = require("express");
+const prisma = require("../../prisma");
+const { requireAuth, requireAdmin } = require("../../middleware/auth");
+
+const router = express.Router();
+
+/**
+ * @swagger
+ * /admin/forms:
+ *   post:
+ *     summary: Create a new form template with fields
+ *     tags: [Admin Forms]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - title
+ *               - fields
+ *             properties:
+ *               title:
+ *                 type: string
+ *                 example: 1st Year - Mid-Semester Grade Check - Fall
+ *               description:
+ *                 type: string
+ *                 nullable: true
+ *                 example: Mid-semester grade check form
+ *               year:
+ *                 type: string
+ *                 nullable: true
+ *                 example: "1"
+ *               dueDate:
+ *                 type: string
+ *                 format: date-time
+ *                 nullable: true
+ *                 example: 2026-10-20T23:59:00.000Z
+ *               instructions:
+ *                 type: string
+ *                 nullable: true
+ *                 example: Please complete all fields before the due date.
+ *               fields:
+ *                 type: array
+ *                 items:
+ *                   type: object
+ *                   required:
+ *                     - label
+ *                     - type
+ *                   properties:
+ *                     label:
+ *                       type: string
+ *                       example: Student Name
+ *                     type:
+ *                       type: string
+ *                       example: text
+ *                     required:
+ *                       type: boolean
+ *                       example: true
+ *                     placeholder:
+ *                       type: string
+ *                       nullable: true
+ *                       example: Enter your full name
+ *                     helpText:
+ *                       type: string
+ *                       nullable: true
+ *                       example: Use your legal name
+ *                     sortOrder:
+ *                       type: integer
+ *                       example: 0
+ *                     configJson:
+ *                       type: object
+ *                       nullable: true
+ *     responses:
+ *       201:
+ *         description: Form created successfully
+ *       400:
+ *         description: Validation error
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Admin access required
+ *       500:
+ *         description: Server error
+ */
+router.post("/", requireAuth, requireAdmin, async (req, res) => {
+	try {
+		const { title, description, year, dueDate, instructions, fields } =
+			req.body;
+
+		if (!title || !title.trim()) {
+			return res.status(400).json({
+				message: "title is required",
+			});
+		}
+
+		if (!Array.isArray(fields) || fields.length === 0) {
+			return res.status(400).json({
+				message: "At least one field is required",
+			});
+		}
+
+		const allowedTypes = [
+			"text",
+			"textarea",
+			"date",
+			"checkbox",
+			"signature",
+			"year",
+		];
+
+		for (let i = 0; i < fields.length; i++) {
+			const field = fields[i];
+
+			if (!field.label || !field.label.trim()) {
+				return res.status(400).json({
+					message: `Field ${i + 1}: label is required`,
+				});
+			}
+
+			if (!field.type || !allowedTypes.includes(field.type)) {
+				return res.status(400).json({
+					message: `Field ${i + 1}: invalid field type`,
+				});
+			}
+		}
+
+		const createdForm = await prisma.formTemplate.create({
+			data: {
+				title: title.trim(),
+				description: description?.trim() || null,
+				year: year || null,
+				dueDate: dueDate ? new Date(dueDate) : null,
+				instructions: instructions?.trim() || null,
+				createdById: req.user.id,
+				fields: {
+					create: fields.map((field, index) => ({
+						label: field.label.trim(),
+						type: field.type,
+						required: Boolean(field.required),
+						placeholder: field.placeholder?.trim() || null,
+						helpText: field.helpText?.trim() || null,
+						sortOrder: field.sortOrder ?? index,
+						configJson: field.configJson ?? null,
+					})),
+				},
+			},
+			include: {
+				fields: {
+					orderBy: { sortOrder: "asc" },
+				},
+				createdBy: {
+					select: {
+						id: true,
+						firstName: true,
+						lastName: true,
+						email: true,
+						role: true,
+					},
+				},
+			},
+		});
+
+		return res.status(201).json({
+			message: "Form created successfully",
+			form: createdForm,
+		});
+	} catch (e) {
+		return res.status(500).json({
+			message: "Server error",
+			error: String(e),
+		});
+	}
+});
+
+/**
+ * @swagger
+ * /admin/forms:
+ *   get:
+ *     summary: Get all form templates
+ *     tags: [Admin Forms]
+ *     responses:
+ *       200:
+ *         description: List of form templates
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Admin access required
+ *       500:
+ *         description: Server error
+ */
+router.get("/", requireAuth, requireAdmin, async (req, res) => {
+	try {
+		const forms = await prisma.formTemplate.findMany({
+			orderBy: { createdAt: "desc" },
+			include: {
+				createdBy: {
+					select: {
+						id: true,
+						firstName: true,
+						lastName: true,
+						email: true,
+					},
+				},
+				fields: {
+					orderBy: { sortOrder: "asc" },
+				},
+				_count: {
+					select: {
+						submissions: true,
+					},
+				},
+			},
+		});
+
+		return res.json({ forms });
+	} catch (e) {
+		return res.status(500).json({
+			message: "Server error",
+			error: String(e),
+		});
+	}
+});
+
+/**
+ * @swagger
+ * /admin/forms/{id}:
+ *   get:
+ *     summary: Get a single form template
+ *     tags: [Admin Forms]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Form template ID
+ *     responses:
+ *       200:
+ *         description: Form returned successfully
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Admin access required
+ *       404:
+ *         description: Form not found
+ *       500:
+ *         description: Server error
+ */
+router.get("/:id", requireAuth, requireAdmin, async (req, res) => {
+	try {
+		const { id } = req.params;
+
+		const form = await prisma.formTemplate.findUnique({
+			where: { id },
+			include: {
+				fields: {
+					orderBy: { sortOrder: "asc" },
+				},
+				createdBy: {
+					select: {
+						id: true,
+						firstName: true,
+						lastName: true,
+						email: true,
+					},
+				},
+			},
+		});
+
+		if (!form) {
+			return res.status(404).json({
+				message: "Form not found",
+			});
+		}
+
+		return res.json({ form });
+	} catch (e) {
+		return res.status(500).json({
+			message: "Server error",
+			error: String(e),
+		});
+	}
+});
+
+/**
+ * @swagger
+ * /admin/forms/{id}:
+ *   put:
+ *     summary: Update a form template and replace its fields
+ *     tags: [Admin Forms]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Form template ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - title
+ *               - fields
+ *             properties:
+ *               title:
+ *                 type: string
+ *               description:
+ *                 type: string
+ *                 nullable: true
+ *               year:
+ *                 type: string
+ *                 nullable: true
+ *               dueDate:
+ *                 type: string
+ *                 format: date-time
+ *                 nullable: true
+ *               instructions:
+ *                 type: string
+ *                 nullable: true
+ *               isActive:
+ *                 type: boolean
+ *               fields:
+ *                 type: array
+ *                 items:
+ *                   type: object
+ *                   required:
+ *                     - label
+ *                     - type
+ *                   properties:
+ *                     label:
+ *                       type: string
+ *                     type:
+ *                       type: string
+ *                     required:
+ *                       type: boolean
+ *                     placeholder:
+ *                       type: string
+ *                       nullable: true
+ *                     helpText:
+ *                       type: string
+ *                       nullable: true
+ *                     sortOrder:
+ *                       type: integer
+ *                     configJson:
+ *                       type: object
+ *                       nullable: true
+ *     responses:
+ *       200:
+ *         description: Form updated successfully
+ *       400:
+ *         description: Validation error
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Admin access required
+ *       404:
+ *         description: Form not found
+ *       500:
+ *         description: Server error
+ */
+router.put("/:id", requireAuth, requireAdmin, async (req, res) => {
+	try {
+		const { id } = req.params;
+		const {
+			title,
+			description,
+			year,
+			dueDate,
+			instructions,
+			isActive,
+			fields,
+		} = req.body;
+
+		const existing = await prisma.formTemplate.findUnique({
+			where: { id },
+			include: { fields: true },
+		});
+
+		if (!existing) {
+			return res.status(404).json({
+				message: "Form not found",
+			});
+		}
+
+		if (!title || !title.trim()) {
+			return res.status(400).json({
+				message: "title is required",
+			});
+		}
+
+		if (!Array.isArray(fields) || fields.length === 0) {
+			return res.status(400).json({
+				message: "At least one field is required",
+			});
+		}
+
+		const allowedTypes = [
+			"text",
+			"textarea",
+			"date",
+			"checkbox",
+			"signature",
+			"year",
+		];
+
+		for (let i = 0; i < fields.length; i++) {
+			const field = fields[i];
+
+			if (!field.label || !field.label.trim()) {
+				return res.status(400).json({
+					message: `Field ${i + 1}: label is required`,
+				});
+			}
+
+			if (!field.type || !allowedTypes.includes(field.type)) {
+				return res.status(400).json({
+					message: `Field ${i + 1}: invalid field type`,
+				});
+			}
+		}
+
+		const updatedForm = await prisma.$transaction(async (tx) => {
+			await tx.formField.deleteMany({
+				where: { formTemplateId: id },
+			});
+
+			return tx.formTemplate.update({
+				where: { id },
+				data: {
+					title: title.trim(),
+					description: description?.trim() || null,
+					year: year || null,
+					dueDate: dueDate ? new Date(dueDate) : null,
+					instructions: instructions?.trim() || null,
+					isActive:
+						typeof isActive === "boolean" ? isActive : existing.isActive,
+					fields: {
+						create: fields.map((field, index) => ({
+							label: field.label.trim(),
+							type: field.type,
+							required: Boolean(field.required),
+							placeholder: field.placeholder?.trim() || null,
+							helpText: field.helpText?.trim() || null,
+							sortOrder: field.sortOrder ?? index,
+							configJson: field.configJson ?? null,
+						})),
+					},
+				},
+				include: {
+					fields: {
+						orderBy: { sortOrder: "asc" },
+					},
+				},
+			});
+		});
+
+		return res.json({
+			message: "Form updated successfully",
+			form: updatedForm,
+		});
+	} catch (e) {
+		return res.status(500).json({
+			message: "Server error",
+			error: String(e),
+		});
+	}
+});
+
+/**
+ * @swagger
+ * /admin/forms/{id}/submissions:
+ *   get:
+ *     summary: Get submissions for a form
+ *     tags: [Admin Forms]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Form template ID
+ *     responses:
+ *       200:
+ *         description: List of submissions for the form
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Admin access required
+ *       500:
+ *         description: Server error
+ */
+router.get("/:id/submissions", requireAuth, requireAdmin, async (req, res) => {
+	try {
+		const { id } = req.params;
+
+		const submissions = await prisma.formSubmission.findMany({
+			where: { formTemplateId: id },
+			orderBy: { createdAt: "desc" },
+			include: {
+				student: {
+					select: {
+						id: true,
+						firstName: true,
+						lastName: true,
+						email: true,
+						schoolId: true,
+						year: true,
+					},
+				},
+				reviewedBy: {
+					select: {
+						id: true,
+						firstName: true,
+						lastName: true,
+						email: true,
+					},
+				},
+			},
+		});
+
+		return res.json({ submissions });
+	} catch (e) {
+		return res.status(500).json({
+			message: "Server error",
+			error: String(e),
+		});
+	}
+});
+
+/**
+ * @swagger
+ * /admin/forms/submissions/{submissionId}/detail:
+ *   get:
+ *     summary: Get full submission detail with answers
+ *     tags: [Admin Forms]
+ *     parameters:
+ *       - in: path
+ *         name: submissionId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Submission ID
+ *     responses:
+ *       200:
+ *         description: Submission returned successfully
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Admin access required
+ *       404:
+ *         description: Submission not found
+ *       500:
+ *         description: Server error
+ */
+router.get(
+	"/submissions/:submissionId/detail",
+	requireAuth,
+	requireAdmin,
+	async (req, res) => {
+		try {
+			const { submissionId } = req.params;
+
+			const submission = await prisma.formSubmission.findUnique({
+				where: { id: submissionId },
+				include: {
+					student: {
+						select: {
+							id: true,
+							firstName: true,
+							lastName: true,
+							email: true,
+							schoolId: true,
+							year: true,
+						},
+					},
+					formTemplate: {
+						include: {
+							fields: {
+								orderBy: { sortOrder: "asc" },
+							},
+						},
+					},
+					answers: {
+						include: {
+							formField: true,
+						},
+					},
+					reviewedBy: {
+						select: {
+							id: true,
+							firstName: true,
+							lastName: true,
+							email: true,
+						},
+					},
+				},
+			});
+
+			if (!submission) {
+				return res.status(404).json({
+					message: "Submission not found",
+				});
+			}
+
+			return res.json({ submission });
+		} catch (e) {
+			return res.status(500).json({
+				message: "Server error",
+				error: String(e),
+			});
+		}
+	},
+);
+
+/**
+ * @swagger
+ * /admin/forms/submissions/{submissionId}/review:
+ *   patch:
+ *     summary: Review or grade a submission
+ *     tags: [Admin Forms]
+ *     parameters:
+ *       - in: path
+ *         name: submissionId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Submission ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               status:
+ *                 type: string
+ *                 example: graded
+ *               grade:
+ *                 type: string
+ *                 nullable: true
+ *                 example: A
+ *               score:
+ *                 type: number
+ *                 nullable: true
+ *                 example: 95
+ *               feedback:
+ *                 type: string
+ *                 nullable: true
+ *                 example: Great work. Please keep copies of all supporting documents.
+ *     responses:
+ *       200:
+ *         description: Submission reviewed successfully
+ *       400:
+ *         description: Validation error
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Admin access required
+ *       404:
+ *         description: Submission not found
+ *       500:
+ *         description: Server error
+ */
+router.patch(
+	"/submissions/:submissionId/review",
+	requireAuth,
+	requireAdmin,
+	async (req, res) => {
+		try {
+			const { submissionId } = req.params;
+			const { status, grade, score, feedback } = req.body;
+
+			const existing = await prisma.formSubmission.findUnique({
+				where: { id: submissionId },
+			});
+
+			if (!existing) {
+				return res.status(404).json({
+					message: "Submission not found",
+				});
+			}
+
+			const allowedStatuses = [
+				"draft",
+				"submitted",
+				"under_review",
+				"graded",
+				"returned",
+			];
+
+			if (status && !allowedStatuses.includes(status)) {
+				return res.status(400).json({
+					message: "Invalid submission status",
+				});
+			}
+
+			const updated = await prisma.formSubmission.update({
+				where: { id: submissionId },
+				data: {
+					status: status || existing.status,
+					grade: grade ?? existing.grade,
+					score: typeof score === "number" ? score : existing.score,
+					feedback: feedback ?? existing.feedback,
+					reviewedAt: new Date(),
+					reviewedById: req.user.id,
+				},
+				include: {
+					student: {
+						select: {
+							id: true,
+							firstName: true,
+							lastName: true,
+							email: true,
+						},
+					},
+				},
+			});
+
+			return res.json({
+				message: "Submission reviewed successfully",
+				submission: updated,
+			});
+		} catch (e) {
+			return res.status(500).json({
+				message: "Server error",
+				error: String(e),
+			});
+		}
+	},
+);
+
+module.exports = router;
