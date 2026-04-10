@@ -2,6 +2,8 @@ const express = require("express");
 const prisma = require("../../prisma");
 const { requireAuth, requireAdmin } = require("../../middleware/auth");
 
+const cloudinary = require("../../cloudinary");
+
 const router = express.Router();
 
 /**
@@ -723,6 +725,115 @@ router.patch(
 			return res.json({
 				message: "Submission reviewed successfully",
 				submission: updated,
+			});
+		} catch (e) {
+			return res.status(500).json({
+				message: "Server error",
+				error: String(e),
+			});
+		}
+	},
+);
+
+function extractCloudinaryPublicId(url) {
+	if (!url || typeof url !== "string") return null;
+
+	try {
+		const parsedUrl = new URL(url);
+		const parts = parsedUrl.pathname.split("/").filter(Boolean);
+		const uploadIndex = parts.findIndex((part) => part === "upload");
+
+		if (uploadIndex === -1) return null;
+
+		let publicIdParts = parts.slice(uploadIndex + 1);
+
+		if (publicIdParts[0] && /^v\d+$/.test(publicIdParts[0])) {
+			publicIdParts = publicIdParts.slice(1);
+		}
+
+		if (publicIdParts.length === 0) return null;
+
+		const lastPart = publicIdParts[publicIdParts.length - 1];
+		publicIdParts[publicIdParts.length - 1] = lastPart.replace(/\.[^.]+$/, "");
+
+		return publicIdParts.join("/");
+	} catch {
+		return null;
+	}
+}
+
+/**
+ * @swagger
+ * /admin/forms/submissions/{submissionId}:
+ *   delete:
+ *     summary: Delete a submission and any uploaded signature assets
+ *     tags: [Admin Forms]
+ *     parameters:
+ *       - in: path
+ *         name: submissionId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Submission ID
+ *     responses:
+ *       200:
+ *         description: Submission deleted successfully
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Admin access required
+ *       404:
+ *         description: Submission not found
+ *       500:
+ *         description: Server error
+ */
+router.delete(
+	"/submissions/:submissionId",
+	requireAuth,
+	requireAdmin,
+	async (req, res) => {
+		try {
+			const { submissionId } = req.params;
+
+			const submission = await prisma.formSubmission.findUnique({
+				where: { id: submissionId },
+				include: {
+					answers: true,
+				},
+			});
+
+			if (!submission) {
+				return res.status(404).json({
+					message: "Submission not found",
+				});
+			}
+
+			const signatureUrls = submission.answers
+				.map((answer) => answer.valueSignatureUrl)
+				.filter((url) => typeof url === "string" && url.trim().length > 0);
+
+			for (const url of signatureUrls) {
+				const publicId = extractCloudinaryPublicId(url);
+				if (!publicId) continue;
+
+				try {
+					await cloudinary.uploader.destroy(publicId, {
+						resource_type: "image",
+					});
+				} catch (cloudinaryError) {
+					console.error(
+						`Failed to delete Cloudinary asset for submission ${submissionId}:`,
+						cloudinaryError,
+					);
+				}
+			}
+
+			await prisma.formSubmission.delete({
+				where: { id: submissionId },
+			});
+
+			return res.json({
+				message: "Submission deleted successfully",
 			});
 		} catch (e) {
 			return res.status(500).json({
