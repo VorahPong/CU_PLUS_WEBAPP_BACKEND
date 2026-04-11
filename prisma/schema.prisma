@@ -23,6 +23,10 @@ model User {
 
   announcements Announcement[] @relation("AnnouncementAuthor")
   sessions Session[]
+
+  createdForms           FormTemplate[]   @relation("CreatedForms")
+  studentSubmissions     FormSubmission[] @relation("StudentFormSubmissions")
+  reviewedSubmissions    FormSubmission[] @relation("ReviewedFormSubmissions")
 }
 
 model Announcement {
@@ -52,4 +56,94 @@ model Session {
   user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+}
+
+model FormTemplate {
+  id          String      @id @default(uuid())
+  title       String
+  description String?
+  year        String?     // optional targeting like "1", "2", etc.
+  isActive    Boolean     @default(true)
+  createdById String
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  dueDate     DateTime?
+  instructions  String?
+
+  createdBy   User        @relation("CreatedForms", fields: [createdById], references: [id])
+  fields      FormField[]
+  submissions FormSubmission[]
+}
+
+model FormField {
+  id             String       @id @default(uuid())
+  formTemplateId String
+  label          String
+  type           FieldType
+  required       Boolean      @default(false)
+  placeholder    String?
+  helpText       String?
+  sortOrder      Int
+  configJson     Json?
+  createdAt      DateTime     @default(now())
+
+  formTemplate   FormTemplate @relation(fields: [formTemplateId], references: [id], onDelete: Cascade)
+  answers        FormAnswer[]
+}
+
+enum FieldType {
+  text
+  textarea
+  date
+  checkbox
+  signature
+  year
+}
+
+model FormSubmission {
+  id             String            @id @default(uuid())
+  formTemplateId String
+  studentId      String
+  status         SubmissionStatus  @default(draft)
+  submittedAt    DateTime?
+  reviewedAt     DateTime?
+  reviewedById   String?
+  grade          String?
+  score          Float?
+  feedback       String?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+  attemptNumber Int @default(1)
+
+  formTemplate   FormTemplate      @relation(fields: [formTemplateId], references: [id], onDelete: Cascade)
+  student        User              @relation("StudentFormSubmissions", fields: [studentId], references: [id])
+  reviewedBy     User?             @relation("ReviewedFormSubmissions", fields: [reviewedById], references: [id])
+  answers        FormAnswer[]
+
+  @@unique([formTemplateId, studentId])
+}
+
+enum SubmissionStatus {
+  draft
+  submitted
+  under_review
+  graded
+  returned
+}
+
+model FormAnswer {
+  id               String         @id @default(uuid())
+  submissionId     String
+  formFieldId      String
+  valueText        String?
+  valueBoolean     Boolean?
+  valueDate        DateTime?
+  valueSignatureUrl String?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  submission       FormSubmission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  formField        FormField      @relation(fields: [formFieldId], references: [id], onDelete: Cascade)
+
+  @@unique([submissionId, formFieldId])
 }

@@ -19,6 +19,73 @@ function createSessionCookie(res, token) {
 	});
 }
 
+/**
+ * @swagger
+ * /auth/login:
+ *   post:
+ *     summary: Log in a user
+ *     tags: [Auth]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - email
+ *               - password
+ *             properties:
+ *               email:
+ *                 type: string
+ *                 example: admin@cameron.edu
+ *               password:
+ *                 type: string
+ *                 example: password123
+ *     responses:
+ *       200:
+ *         description: Login successful
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 user:
+ *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: string
+ *                       example: 6251c3de-56cc-43b3-bbac-1a9611157051
+ *                     email:
+ *                       type: string
+ *                       example: test@admin.edu
+ *                     role:
+ *                       type: string
+ *                       example: admin
+ *                     firstName:
+ *                       type: string
+ *                       example: admin
+ *                     lastName:
+ *                       type: string
+ *                       example: admin
+ *                     name:
+ *                       type: string
+ *                       nullable: true
+ *                       example: null
+ *                     schoolId:
+ *                       type: string
+ *                       example: 1
+ *                     year:
+ *                       type: string
+ *                       example: 1000
+ *       400:
+ *         description: Email and password are required
+ *       401:
+ *         description: Invalid credentials
+ *       403:
+ *         description: Account has been deactivated
+ *       500:
+ *         description: Server error
+ */
 router.post("/login", async (req, res) => {
 	try {
 		const { email, password } = req.body;
@@ -86,6 +153,53 @@ router.post("/login", async (req, res) => {
 	}
 });
 
+/**
+ * @swagger
+ * /auth/me:
+ *   get:
+ *     summary: Get the currently authenticated user
+ *     tags: [Auth]
+ *     responses:
+ *       200:
+ *         description: Current user returned successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 user:
+ *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: string
+ *                       example: 6251c3de-56cc-43b3-bbac-1a9611157051
+ *                     email:
+ *                       type: string
+ *                       example: test@admin.edu
+ *                     role:
+ *                       type: string
+ *                       example: admin
+ *                     firstName:
+ *                       type: string
+ *                       example: admin
+ *                     lastName:
+ *                       type: string
+ *                       example: admin
+ *                     name:
+ *                       type: string
+ *                       nullable: true
+ *                       example: null
+ *                     schoolId:
+ *                       type: string
+ *                       example: 1
+ *                     year:
+ *                       type: string
+ *                       example: 1000
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Server error
+ */
 router.get("/me", requireAuth, async (req, res) => {
 	try {
 		const user = await prisma.user.findUnique({
@@ -108,6 +222,28 @@ router.get("/me", requireAuth, async (req, res) => {
 	}
 });
 
+/**
+ * @swagger
+ * /auth/logout:
+ *   post:
+ *     summary: Log out the current user
+ *     tags: [Auth]
+ *     responses:
+ *       200:
+ *         description: Logout successful
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Logged out
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Server error
+ */
 router.post("/logout", requireAuth, async (req, res) => {
 	try {
 		await prisma.session.update({
