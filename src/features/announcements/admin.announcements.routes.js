@@ -2,6 +2,10 @@ const express = require("express");
 const prisma = require("../../prisma");
 const { requireAuth, requireAdmin } = require("../../middleware/auth");
 
+const {
+	notifyStudentsForAnnouncement,
+} = require("../notifications/notification.service");
+
 const router = express.Router();
 
 /**
@@ -98,6 +102,9 @@ router.post("/", requireAuth, requireAdmin, async (req, res) => {
 				},
 			},
 		});
+
+		// put it into notification
+		await notifyStudentsForAnnouncement(createdAnnouncement);
 
 		return res.status(201).json({
 			message: "Announcement created successfully",

@@ -4,6 +4,10 @@ const { requireAuth, requireAdmin } = require("../../middleware/auth");
 
 const cloudinary = require("../../cloudinary");
 
+const {
+	notifyStudentsForForm,
+} = require("../notifications/notification.service");
+
 const router = express.Router();
 
 /**
@@ -192,6 +196,9 @@ router.post("/", requireAuth, requireAdmin, async (req, res) => {
 				},
 			},
 		});
+
+		// create form
+		await notifyStudentsForForm(createdForm);
 
 		return res.status(201).json({
 			message: "Form created successfully",

@@ -47,6 +47,10 @@ app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
 app.use("/course-content", courseFoldersRoutes);
 
+const studentNotificationsRoutes = require("./features/notifications/student.notifications.routes");
+
+app.use("/student/notifications", studentNotificationsRoutes);
+
 // start server
 const PORT = process.env.PORT || 4000;
 app.listen(PORT, () => console.log(`API on http://localhost:${PORT}`));
