@@ -2,6 +2,8 @@ const express = require("express");
 const prisma = require("../../prisma");
 const { requireAuth, requireAdmin } = require("../../middleware/auth");
 
+const cloudinary = require("../../cloudinary");
+
 const router = express.Router();
 
 /**
@@ -31,6 +33,13 @@ const router = express.Router();
  *                 type: string
  *                 nullable: true
  *                 example: "1"
+ *               folderId:
+ *                 type: string
+ *                 nullable: true
+ *                 example: 7f2d5c40-1234-4f61-9d11-abcdef123456
+ *               sortOrder:
+ *                 type: integer
+ *                 example: 0
  *               dueDate:
  *                 type: string
  *                 format: date-time
@@ -85,8 +94,16 @@ const router = express.Router();
  */
 router.post("/", requireAuth, requireAdmin, async (req, res) => {
 	try {
-		const { title, description, year, dueDate, instructions, fields } =
-			req.body;
+		const {
+			title,
+			description,
+			year,
+			folderId,
+			sortOrder,
+			dueDate,
+			instructions,
+			fields,
+		} = req.body;
 
 		if (!title || !title.trim()) {
 			return res.status(400).json({
@@ -125,11 +142,25 @@ router.post("/", requireAuth, requireAdmin, async (req, res) => {
 			}
 		}
 
+		if (folderId) {
+			const folder = await prisma.courseFolder.findUnique({
+				where: { id: folderId },
+			});
+
+			if (!folder) {
+				return res.status(404).json({
+					message: "Folder not found",
+				});
+			}
+		}
+
 		const createdForm = await prisma.formTemplate.create({
 			data: {
 				title: title.trim(),
 				description: description?.trim() || null,
 				year: year || null,
+				folderId: folderId || null,
+				sortOrder: typeof sortOrder === "number" ? sortOrder : 0,
 				dueDate: dueDate ? new Date(dueDate) : null,
 				instructions: instructions?.trim() || null,
 				createdById: req.user.id,
@@ -149,6 +180,7 @@ router.post("/", requireAuth, requireAdmin, async (req, res) => {
 				fields: {
 					orderBy: { sortOrder: "asc" },
 				},
+				folder: true,
 				createdBy: {
 					select: {
 						id: true,
@@ -192,7 +224,7 @@ router.post("/", requireAuth, requireAdmin, async (req, res) => {
 router.get("/", requireAuth, requireAdmin, async (req, res) => {
 	try {
 		const forms = await prisma.formTemplate.findMany({
-			orderBy: { createdAt: "desc" },
+			orderBy: [{ sortOrder: "asc" }, { createdAt: "desc" }],
 			include: {
 				createdBy: {
 					select: {
@@ -202,6 +234,7 @@ router.get("/", requireAuth, requireAdmin, async (req, res) => {
 						email: true,
 					},
 				},
+				folder: true,
 				fields: {
 					orderBy: { sortOrder: "asc" },
 				},
@@ -257,6 +290,7 @@ router.get("/:id", requireAuth, requireAdmin, async (req, res) => {
 				fields: {
 					orderBy: { sortOrder: "asc" },
 				},
+				folder: true,
 				createdBy: {
 					select: {
 						id: true,
@@ -314,6 +348,11 @@ router.get("/:id", requireAuth, requireAdmin, async (req, res) => {
  *               year:
  *                 type: string
  *                 nullable: true
+ *               folderId:
+ *                 type: string
+ *                 nullable: true
+ *               sortOrder:
+ *                 type: integer
  *               dueDate:
  *                 type: string
  *                 format: date-time
@@ -369,6 +408,8 @@ router.put("/:id", requireAuth, requireAdmin, async (req, res) => {
 			title,
 			description,
 			year,
+			folderId,
+			sortOrder,
 			dueDate,
 			instructions,
 			isActive,
@@ -423,6 +464,18 @@ router.put("/:id", requireAuth, requireAdmin, async (req, res) => {
 			}
 		}
 
+		if (folderId) {
+			const folder = await prisma.courseFolder.findUnique({
+				where: { id: folderId },
+			});
+
+			if (!folder) {
+				return res.status(404).json({
+					message: "Folder not found",
+				});
+			}
+		}
+
 		const updatedForm = await prisma.$transaction(async (tx) => {
 			await tx.formField.deleteMany({
 				where: { formTemplateId: id },
@@ -434,6 +487,9 @@ router.put("/:id", requireAuth, requireAdmin, async (req, res) => {
 					title: title.trim(),
 					description: description?.trim() || null,
 					year: year || null,
+					folderId: folderId === undefined ? existing.folderId : folderId || null,
+					sortOrder:
+						typeof sortOrder === "number" ? sortOrder : existing.sortOrder,
 					dueDate: dueDate ? new Date(dueDate) : null,
 					instructions: instructions?.trim() || null,
 					isActive:
@@ -454,6 +510,7 @@ router.put("/:id", requireAuth, requireAdmin, async (req, res) => {
 					fields: {
 						orderBy: { sortOrder: "asc" },
 					},
+					folder: true,
 				},
 			});
 		});
@@ -723,6 +780,198 @@ router.patch(
 			return res.json({
 				message: "Submission reviewed successfully",
 				submission: updated,
+			});
+		} catch (e) {
+			return res.status(500).json({
+				message: "Server error",
+				error: String(e),
+			});
+		}
+	},
+);
+
+function extractCloudinaryPublicId(url) {
+	if (!url || typeof url !== "string") return null;
+
+	try {
+		const parsedUrl = new URL(url);
+		const parts = parsedUrl.pathname.split("/").filter(Boolean);
+		const uploadIndex = parts.findIndex((part) => part === "upload");
+
+		if (uploadIndex === -1) return null;
+
+		let publicIdParts = parts.slice(uploadIndex + 1);
+
+		if (publicIdParts[0] && /^v\d+$/.test(publicIdParts[0])) {
+			publicIdParts = publicIdParts.slice(1);
+		}
+
+		if (publicIdParts.length === 0) return null;
+
+		const lastPart = publicIdParts[publicIdParts.length - 1];
+		publicIdParts[publicIdParts.length - 1] = lastPart.replace(/\.[^.]+$/, "");
+
+		return publicIdParts.join("/");
+	} catch {
+		return null;
+	}
+}
+
+/**
+ * @swagger
+ * /admin/forms/{id}:
+ *   delete:
+ *     summary: Delete a form template
+ *     tags: [Admin Forms]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Form template ID
+ *     responses:
+ *       200:
+ *         description: Form deleted successfully
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Admin access required
+ *       404:
+ *         description: Form not found
+ *       500:
+ *         description: Server error
+ */
+router.delete("/:id", requireAuth, requireAdmin, async (req, res) => {
+	try {
+		const { id } = req.params;
+
+		const form = await prisma.formTemplate.findUnique({
+			where: { id },
+			include: {
+				submissions: {
+					include: {
+						answers: true,
+					},
+				},
+			},
+		});
+
+		if (!form) {
+			return res.status(404).json({
+				message: "Form not found",
+			});
+		}
+
+		const signatureUrls = form.submissions.flatMap((submission) =>
+			submission.answers
+				.map((answer) => answer.valueSignatureUrl)
+				.filter((url) => typeof url === "string" && url.trim().length > 0),
+		);
+
+		for (const url of signatureUrls) {
+			const publicId = extractCloudinaryPublicId(url);
+			if (!publicId) continue;
+
+			try {
+				await cloudinary.uploader.destroy(publicId, {
+					resource_type: "image",
+				});
+			} catch (cloudinaryError) {
+				console.error(
+					`Failed to delete Cloudinary asset for form ${id}:`,
+					cloudinaryError,
+				);
+			}
+		}
+
+		await prisma.formTemplate.delete({
+			where: { id },
+		});
+
+		return res.json({
+			message: "Form deleted successfully",
+		});
+	} catch (e) {
+		return res.status(500).json({
+			message: "Server error",
+			error: String(e),
+		});
+	}
+});
+
+/**
+ * @swagger
+ * /admin/forms/submissions/{submissionId}:
+ *   delete:
+ *     summary: Delete a submission and any uploaded signature assets
+ *     tags: [Admin Forms]
+ *     parameters:
+ *       - in: path
+ *         name: submissionId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Submission ID
+ *     responses:
+ *       200:
+ *         description: Submission deleted successfully
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Admin access required
+ *       404:
+ *         description: Submission not found
+ *       500:
+ *         description: Server error
+ */
+router.delete(
+	"/submissions/:submissionId",
+	requireAuth,
+	requireAdmin,
+	async (req, res) => {
+		try {
+			const { submissionId } = req.params;
+
+			const submission = await prisma.formSubmission.findUnique({
+				where: { id: submissionId },
+				include: {
+					answers: true,
+				},
+			});
+
+			if (!submission) {
+				return res.status(404).json({
+					message: "Submission not found",
+				});
+			}
+
+			const signatureUrls = submission.answers
+				.map((answer) => answer.valueSignatureUrl)
+				.filter((url) => typeof url === "string" && url.trim().length > 0);
+
+			for (const url of signatureUrls) {
+				const publicId = extractCloudinaryPublicId(url);
+				if (!publicId) continue;
+
+				try {
+					await cloudinary.uploader.destroy(publicId, {
+						resource_type: "image",
+					});
+				} catch (cloudinaryError) {
+					console.error(
+						`Failed to delete Cloudinary asset for submission ${submissionId}:`,
+						cloudinaryError,
+					);
+				}
+			}
+
+			await prisma.formSubmission.delete({
+				where: { id: submissionId },
+			});
+
+			return res.json({
+				message: "Submission deleted successfully",
 			});
 		} catch (e) {
 			return res.status(500).json({
