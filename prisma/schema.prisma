@@ -25,6 +25,7 @@ model User {
   sessions Session[]
 
   createdForms           FormTemplate[]   @relation("CreatedForms")
+  createdFolders CourseFolder[]
   studentSubmissions     FormSubmission[] @relation("StudentFormSubmissions")
   reviewedSubmissions    FormSubmission[] @relation("ReviewedFormSubmissions")
 }
@@ -59,20 +60,25 @@ model Session {
 }
 
 model FormTemplate {
-  id          String      @id @default(uuid())
-  title       String
-  description String?
-  year        String?     // optional targeting like "1", "2", etc.
-  isActive    Boolean     @default(true)
-  createdById String
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
-  dueDate     DateTime?
+  id            String           @id @default(uuid())
+  title         String
+  description   String?
+  year          String?          // optional targeting like "1", "2", etc.
+  isActive      Boolean          @default(true)
+  createdById   String
+  folderId      String?
+  sortOrder     Int              @default(0)
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+  dueDate       DateTime?
   instructions  String?
 
-  createdBy   User        @relation("CreatedForms", fields: [createdById], references: [id])
-  fields      FormField[]
-  submissions FormSubmission[]
+  createdBy     User             @relation("CreatedForms", fields: [createdById], references: [id])
+  folder        CourseFolder?    @relation(fields: [folderId], references: [id], onDelete: SetNull)
+  fields        FormField[]
+  submissions   FormSubmission[]
+
+  @@index([folderId])
 }
 
 model FormField {
@@ -146,4 +152,22 @@ model FormAnswer {
   formField        FormField      @relation(fields: [formFieldId], references: [id], onDelete: Cascade)
 
   @@unique([submissionId, formFieldId])
+}
+
+model CourseFolder {
+  id          String         @id @default(uuid())
+  title       String
+  parentId    String?
+  createdById String?
+  sortOrder   Int            @default(0)
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  parent      CourseFolder?  @relation("FolderChildren", fields: [parentId], references: [id], onDelete: Cascade)
+  children    CourseFolder[] @relation("FolderChildren")
+  forms       FormTemplate[]
+
+  createdBy   User?          @relation(fields: [createdById], references: [id])
+
+  @@index([parentId])
 }
