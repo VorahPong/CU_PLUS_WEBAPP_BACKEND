@@ -434,6 +434,10 @@ router.post("/:id/submissions", requireAuth, async (req, res) => {
  *                 type: string
  *                 description: Base64-encoded image data URL
  *                 example: data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAA...
+ *               oldUrl:
+ *                 type: string
+ *                 description: Existing Cloudinary URL to delete after successful replacement
+ *                 example: https://res.cloudinary.com/your-cloud/image/upload/v123/signature.png
  *     responses:
  *       200:
  *         description: Signature uploaded successfully
@@ -454,7 +458,7 @@ router.post("/:id/submissions", requireAuth, async (req, res) => {
  */
 router.post("/signature", requireAuth, async (req, res) => {
 	try {
-		const { dataUrl } = req.body;
+		const { dataUrl, oldUrl } = req.body;
 
 		if (!dataUrl || typeof dataUrl !== "string") {
 			return res.status(400).json({ message: "No image provided" });
@@ -469,6 +473,22 @@ router.post("/signature", requireAuth, async (req, res) => {
 			resource_type: "image",
 			format: "png",
 		});
+
+		// Delete old signature if provided
+		if (oldUrl && typeof oldUrl === "string") {
+			try {
+				// Extract public_id from Cloudinary URL
+				const parts = oldUrl.split("/");
+				const fileWithExt = parts[parts.length - 1];
+				const publicId = `cuplus/signatures/${fileWithExt.split(".")[0]}`;
+
+				await cloudinary.uploader.destroy(publicId, {
+					resource_type: "image",
+				});
+			} catch (err) {
+				console.warn("Failed to delete old signature:", err);
+			}
+		}
 
 		return res.json({
 			url: result.secure_url,
