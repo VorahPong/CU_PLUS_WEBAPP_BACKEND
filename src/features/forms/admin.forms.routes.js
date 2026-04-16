@@ -562,7 +562,12 @@ router.get("/:id/submissions", requireAuth, requireAdmin, async (req, res) => {
 		const { id } = req.params;
 
 		const submissions = await prisma.formSubmission.findMany({
-			where: { formTemplateId: id },
+			where: {
+				formTemplateId: id,
+				status: {
+					not: "draft",
+				},
+			},
 			orderBy: { createdAt: "desc" },
 			include: {
 				student: {
@@ -628,8 +633,13 @@ router.get(
 		try {
 			const { submissionId } = req.params;
 
-			const submission = await prisma.formSubmission.findUnique({
-				where: { id: submissionId },
+			const submission = await prisma.formSubmission.findFirst({
+				where: {
+					id: submissionId,
+					status: {
+						not: "draft",
+					},
+				},
 				include: {
 					student: {
 						select: {

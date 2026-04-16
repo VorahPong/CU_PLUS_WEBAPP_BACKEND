@@ -34,19 +34,25 @@ model User {
 }
 
 model Announcement {
-  id          String   @id @default(uuid())
+  id          String             @id @default(uuid())
   message     String
-  everyone    Boolean  @default(false)
-  firstYear   Boolean  @default(false)
-  secondYear  Boolean  @default(false)
-  thirdYear   Boolean  @default(false)
-  fourthYear  Boolean  @default(false)
+  status      AnnouncementStatus @default(published)
+  everyone    Boolean            @default(false)
+  firstYear   Boolean            @default(false)
+  secondYear  Boolean            @default(false)
+  thirdYear   Boolean            @default(false)
+  fourthYear  Boolean            @default(false)
 
   authorId    String
-  author      User     @relation("AnnouncementAuthor", fields: [authorId], references: [id])
+  author      User               @relation("AnnouncementAuthor", fields: [authorId], references: [id])
 
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+}
+
+enum AnnouncementStatus {
+  draft
+  published
 }
 
 model Session {

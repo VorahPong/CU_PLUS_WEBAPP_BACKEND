@@ -4,7 +4,6 @@ const { requireAuth } = require("../../middleware/auth");
 
 const router = express.Router();
 
-
 /**
  * @swagger
  * /student/announcements/my-feed:
@@ -30,6 +29,9 @@ const router = express.Router();
  *                       message:
  *                         type: string
  *                         example: Classes are canceled tomorrow
+ *                       status:
+ *                         type: string
+ *                         example: published
  *                       everyone:
  *                         type: boolean
  *                       firstYear:
@@ -88,6 +90,7 @@ router.get("/my-feed", requireAuth, async (req, res) => {
 
 		const announcements = await prisma.announcement.findMany({
 			where: {
+				status: "published",
 				OR: [{ everyone: true }, yearFilter],
 			},
 			orderBy: { createdAt: "desc" },
