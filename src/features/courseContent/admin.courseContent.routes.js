@@ -83,13 +83,17 @@ router.get("/tree", requireAuth, async (req, res) => {
 			prisma.formTemplate.findMany({
 				orderBy: [{ sortOrder: "asc" }, { createdAt: "desc" }],
 				include: {
-					_count: {
-						select: {
-							submissions: true,
-						},
-					},
 					...(isAdmin
-						? {}
+						? {
+								submissions: {
+									where: {
+										status: "submitted",
+									},
+									select: {
+										id: true,
+									},
+								},
+							}
 						: {
 								submissions: {
 									where: {
@@ -109,7 +113,12 @@ router.get("/tree", requireAuth, async (req, res) => {
 
 		const normalizedForms = forms.map((form) => {
 			if (isAdmin) {
-				return form;
+				return {
+					...form,
+					_count: {
+						submissions: form.submissions?.length ?? 0,
+					},
+				};
 			}
 
 			const submission = form.submissions?.[0] ?? null;
