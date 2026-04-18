@@ -39,7 +39,11 @@ app.use("/auth", authRoutes);
 
 app.use("/admin/announcements", adminAnnouncementsRoutes);
 app.use("/admin/students", adminStudentsRoutes);
+
 app.use("/admin/forms", adminFormsRoutes);
+
+const formsExportRoutes = require("./features/forms/forms.export.routes");
+app.use("/forms", formsExportRoutes);
 
 app.use("/student/announcements", studentAnnouncementsRoutes);
 app.use("/student/forms", studentFormsRoutes);

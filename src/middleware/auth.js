@@ -36,6 +36,7 @@ async function requireAuth(req, res, next) {
 			id: session.user.id,
 			email: session.user.email,
 			role: session.user.role,
+			year: session.user.year || null,
 		};
 
 		req.session = session;
