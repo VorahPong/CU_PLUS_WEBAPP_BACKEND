@@ -122,9 +122,63 @@ async function notifyStudentsForForm(form) {
 	return createNotifications(notifications);
 }
 
+async function notifyStudentForSubmissionGraded(submission) {
+	if (!submission?.student?.id || !submission?.formTemplate?.id) return;
+
+	const grade = submission.grade ? ` Grade: ${submission.grade}.` : "";
+	const score = submission.score != null ? ` Score: ${submission.score}.` : "";
+	const feedback = submission.feedback
+		? ` Feedback: ${String(submission.feedback).trim()}`
+		: "";
+
+	await prisma.notification.create({
+		data: {
+			userId: submission.student.id,
+			type: "form_graded",
+			title: "Form graded",
+			message:
+				`Your submission for \"${submission.formTemplate.title}\" has been graded.${grade}${score}${feedback}`.trim(),
+			link: `/dashboard/student/forms/${submission.formTemplate.id}`,
+			metadataJson: {
+				formId: submission.formTemplate.id,
+				submissionId: submission.id,
+				status: submission.status,
+				grade: submission.grade ?? null,
+				score: submission.score ?? null,
+			},
+		},
+	});
+}
+
+async function notifyStudentForSubmissionReturned(submission) {
+	if (!submission?.student?.id || !submission?.formTemplate?.id) return;
+
+	const feedback = submission.feedback
+		? ` Feedback: ${String(submission.feedback).trim()}`
+		: "";
+
+	await prisma.notification.create({
+		data: {
+			userId: submission.student.id,
+			type: "form_returned",
+			title: "Form returned for edits",
+			message:
+				`Your submission for \"${submission.formTemplate.title}\" was returned so you can continue editing and resubmit.${feedback}`.trim(),
+			link: `/dashboard/student/forms/${submission.formTemplate.id}`,
+			metadataJson: {
+				formId: submission.formTemplate.id,
+				submissionId: submission.id,
+				status: submission.status,
+			},
+		},
+	});
+}
+
 module.exports = {
 	buildNotification,
 	createNotifications,
 	notifyStudentsForAnnouncement,
 	notifyStudentsForForm,
+	notifyStudentForSubmissionGraded,
+	notifyStudentForSubmissionReturned,
 };

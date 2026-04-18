@@ -6,6 +6,8 @@ const cloudinary = require("../../cloudinary");
 
 const {
 	notifyStudentsForForm,
+	notifyStudentForSubmissionGraded,
+	notifyStudentForSubmissionReturned,
 } = require("../notifications/notification.service");
 
 const router = express.Router();
@@ -494,7 +496,8 @@ router.put("/:id", requireAuth, requireAdmin, async (req, res) => {
 					title: title.trim(),
 					description: description?.trim() || null,
 					year: year || null,
-					folderId: folderId === undefined ? existing.folderId : folderId || null,
+					folderId:
+						folderId === undefined ? existing.folderId : folderId || null,
 					sortOrder:
 						typeof sortOrder === "number" ? sortOrder : existing.sortOrder,
 					dueDate: dueDate ? new Date(dueDate) : null,
@@ -772,7 +775,8 @@ router.patch(
 				status !== "under_review"
 			) {
 				return res.status(400).json({
-					message: "Draft submissions can only move to submitted or under_review through this endpoint",
+					message:
+						"Draft submissions can only move to submitted or under_review through this endpoint",
 				});
 			}
 
@@ -782,7 +786,10 @@ router.patch(
 				});
 			}
 
-			if (score !== undefined && (typeof score !== "number" || Number.isNaN(score))) {
+			if (
+				score !== undefined &&
+				(typeof score !== "number" || Number.isNaN(score))
+			) {
 				return res.status(400).json({
 					message: "score must be a valid number",
 				});
@@ -901,7 +908,10 @@ router.patch(
 				});
 			}
 
-			if (score !== undefined && (typeof score !== "number" || Number.isNaN(score))) {
+			if (
+				score !== undefined &&
+				(typeof score !== "number" || Number.isNaN(score))
+			) {
 				return res.status(400).json({
 					message: "score must be a valid number",
 				});
@@ -926,6 +936,12 @@ router.patch(
 							email: true,
 						},
 					},
+					formTemplate: {
+						select: {
+							id: true,
+							title: true,
+						},
+					},
 					reviewedBy: {
 						select: {
 							id: true,
@@ -936,6 +952,8 @@ router.patch(
 					},
 				},
 			});
+
+			await notifyStudentForSubmissionGraded(updated);
 
 			return res.json({
 				message: "Submission graded successfully",
@@ -1040,6 +1058,12 @@ router.patch(
 							email: true,
 						},
 					},
+					formTemplate: {
+						select: {
+							id: true,
+							title: true,
+						},
+					},
 					reviewedBy: {
 						select: {
 							id: true,
@@ -1050,6 +1074,8 @@ router.patch(
 					},
 				},
 			});
+
+			await notifyStudentForSubmissionReturned(updated);
 
 			return res.json({
 				message: "Submission returned to draft successfully",
