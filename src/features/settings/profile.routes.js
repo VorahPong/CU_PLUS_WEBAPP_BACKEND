@@ -107,10 +107,6 @@ router.get("/me", requireAuth, async (req, res) => {
  *           schema:
  *             type: object
  *             properties:
- *               firstName:
- *                 type: string
- *               lastName:
- *                 type: string
  *               name:
  *                 type: string
  *                 nullable: true
@@ -128,7 +124,7 @@ router.get("/me", requireAuth, async (req, res) => {
  */
 router.patch("/me", requireAuth, async (req, res) => {
 	try {
-		const { firstName, lastName, name } = req.body;
+		const { name } = req.body;
 
 		const existing = await prisma.user.findUnique({
 			where: { id: req.user.id },
@@ -140,25 +136,9 @@ router.patch("/me", requireAuth, async (req, res) => {
 			});
 		}
 
-		if (firstName != null && !firstName.toString().trim()) {
-			return res.status(400).json({
-				message: "First name cannot be empty",
-			});
-		}
-
-		if (lastName != null && !lastName.toString().trim()) {
-			return res.status(400).json({
-				message: "Last name cannot be empty",
-			});
-		}
-
 		const updatedUser = await prisma.user.update({
 			where: { id: req.user.id },
 			data: {
-				firstName:
-					firstName != null ? firstName.toString().trim() : existing.firstName,
-				lastName:
-					lastName != null ? lastName.toString().trim() : existing.lastName,
 				name: name != null ? name.toString().trim() || null : existing.name,
 			},
 			select: {

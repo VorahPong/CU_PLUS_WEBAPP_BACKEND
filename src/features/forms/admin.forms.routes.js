@@ -6,6 +6,8 @@ const cloudinary = require("../../cloudinary");
 
 const {
 	notifyStudentsForForm,
+	notifyStudentForSubmissionGraded,
+	notifyStudentForSubmissionReturned,
 } = require("../notifications/notification.service");
 
 const router = express.Router();
@@ -494,7 +496,8 @@ router.put("/:id", requireAuth, requireAdmin, async (req, res) => {
 					title: title.trim(),
 					description: description?.trim() || null,
 					year: year || null,
-					folderId: folderId === undefined ? existing.folderId : folderId || null,
+					folderId:
+						folderId === undefined ? existing.folderId : folderId || null,
 					sortOrder:
 						typeof sortOrder === "number" ? sortOrder : existing.sortOrder,
 					dueDate: dueDate ? new Date(dueDate) : null,
@@ -549,7 +552,7 @@ router.put("/:id", requireAuth, requireAdmin, async (req, res) => {
  *         description: Form template ID
  *     responses:
  *       200:
- *         description: List of submissions for the form
+ *         description: List of submissions for the form, including grading metadata
  *       401:
  *         description: Unauthorized
  *       403:
@@ -615,7 +618,7 @@ router.get("/:id/submissions", requireAuth, requireAdmin, async (req, res) => {
  *         description: Submission ID
  *     responses:
  *       200:
- *         description: Submission returned successfully
+ *         description: Submission returned successfully with answers and grading metadata
  *       401:
  *         description: Unauthorized
  *       403:
@@ -694,7 +697,7 @@ router.get(
  * @swagger
  * /admin/forms/submissions/{submissionId}/review:
  *   patch:
- *     summary: Review or grade a submission
+ *     summary: Review, return, or grade a submission
  *     tags: [Admin Forms]
  *     parameters:
  *       - in: path
@@ -766,16 +769,43 @@ router.patch(
 				"returned",
 			];
 
+			if (
+				existing.status === "draft" &&
+				status !== "submitted" &&
+				status !== "under_review"
+			) {
+				return res.status(400).json({
+					message:
+						"Draft submissions can only move to submitted or under_review through this endpoint",
+				});
+			}
+
 			if (status && !allowedStatuses.includes(status)) {
 				return res.status(400).json({
 					message: "Invalid submission status",
 				});
 			}
 
+			if (
+				score !== undefined &&
+				(typeof score !== "number" || Number.isNaN(score))
+			) {
+				return res.status(400).json({
+					message: "score must be a valid number",
+				});
+			}
+
+			const hasGradingPayload =
+				grade !== undefined || score !== undefined || feedback !== undefined;
+			const nextStatus =
+				hasGradingPayload && status !== "draft"
+					? "graded"
+					: status || existing.status;
+
 			const updated = await prisma.formSubmission.update({
 				where: { id: submissionId },
 				data: {
-					status: status || existing.status,
+					status: nextStatus,
 					grade: grade ?? existing.grade,
 					score: typeof score === "number" ? score : existing.score,
 					feedback: feedback ?? existing.feedback,
@@ -796,6 +826,259 @@ router.patch(
 
 			return res.json({
 				message: "Submission reviewed successfully",
+				submission: updated,
+			});
+		} catch (e) {
+			return res.status(500).json({
+				message: "Server error",
+				error: String(e),
+			});
+		}
+	},
+);
+
+/**
+ * @swagger
+ * /admin/forms/submissions/{submissionId}/grade:
+ *   patch:
+ *     summary: Grade a submission
+ *     tags: [Admin Forms]
+ *     parameters:
+ *       - in: path
+ *         name: submissionId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Submission ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               grade:
+ *                 type: string
+ *                 nullable: true
+ *                 example: A
+ *               score:
+ *                 type: number
+ *                 nullable: true
+ *                 example: 95
+ *               feedback:
+ *                 type: string
+ *                 nullable: true
+ *                 example: Great work. Please keep copies of all supporting documents.
+ *     responses:
+ *       200:
+ *         description: Submission graded successfully
+ *       400:
+ *         description: Validation error
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Admin access required
+ *       404:
+ *         description: Submission not found
+ *       500:
+ *         description: Server error
+ */
+router.patch(
+	"/submissions/:submissionId/grade",
+	requireAuth,
+	requireAdmin,
+	async (req, res) => {
+		try {
+			const { submissionId } = req.params;
+			const { grade, score, feedback } = req.body;
+
+			const existing = await prisma.formSubmission.findUnique({
+				where: { id: submissionId },
+			});
+
+			if (!existing) {
+				return res.status(404).json({
+					message: "Submission not found",
+				});
+			}
+
+			if (existing.status === "draft") {
+				return res.status(400).json({
+					message: "Draft submissions cannot be graded",
+				});
+			}
+
+			if (
+				score !== undefined &&
+				(typeof score !== "number" || Number.isNaN(score))
+			) {
+				return res.status(400).json({
+					message: "score must be a valid number",
+				});
+			}
+
+			const updated = await prisma.formSubmission.update({
+				where: { id: submissionId },
+				data: {
+					status: "graded",
+					grade: grade ?? existing.grade,
+					score: typeof score === "number" ? score : existing.score,
+					feedback: feedback ?? existing.feedback,
+					reviewedAt: new Date(),
+					reviewedById: req.user.id,
+				},
+				include: {
+					student: {
+						select: {
+							id: true,
+							firstName: true,
+							lastName: true,
+							email: true,
+						},
+					},
+					formTemplate: {
+						select: {
+							id: true,
+							title: true,
+						},
+					},
+					reviewedBy: {
+						select: {
+							id: true,
+							firstName: true,
+							lastName: true,
+							email: true,
+						},
+					},
+				},
+			});
+
+			await notifyStudentForSubmissionGraded(updated);
+
+			return res.json({
+				message: "Submission graded successfully",
+				submission: updated,
+			});
+		} catch (e) {
+			return res.status(500).json({
+				message: "Server error",
+				error: String(e),
+			});
+		}
+	},
+);
+
+/**
+ * @swagger
+ * /admin/forms/submissions/{submissionId}/return-to-draft:
+ *   patch:
+ *     summary: Return a submission back to draft so the student can continue editing
+ *     tags: [Admin Forms]
+ *     parameters:
+ *       - in: path
+ *         name: submissionId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Submission ID
+ *     requestBody:
+ *       required: false
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               feedback:
+ *                 type: string
+ *                 nullable: true
+ *                 example: Please finish the missing sections before submitting again.
+ *     responses:
+ *       200:
+ *         description: Submission returned to draft successfully
+ *       400:
+ *         description: Validation error
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Admin access required
+ *       404:
+ *         description: Submission not found
+ *       500:
+ *         description: Server error
+ */
+router.patch(
+	"/submissions/:submissionId/return-to-draft",
+	requireAuth,
+	requireAdmin,
+	async (req, res) => {
+		try {
+			const { submissionId } = req.params;
+			const { feedback } = req.body;
+
+			const existing = await prisma.formSubmission.findUnique({
+				where: { id: submissionId },
+				include: {
+					student: {
+						select: {
+							id: true,
+							firstName: true,
+							lastName: true,
+							email: true,
+						},
+					},
+				},
+			});
+
+			if (!existing) {
+				return res.status(404).json({
+					message: "Submission not found",
+				});
+			}
+
+			if (existing.status === "draft") {
+				return res.status(400).json({
+					message: "Submission is already in draft state",
+				});
+			}
+
+			const updated = await prisma.formSubmission.update({
+				where: { id: submissionId },
+				data: {
+					status: "draft",
+					feedback: feedback ?? existing.feedback,
+					reviewedAt: new Date(),
+					reviewedById: req.user.id,
+				},
+				include: {
+					student: {
+						select: {
+							id: true,
+							firstName: true,
+							lastName: true,
+							email: true,
+						},
+					},
+					formTemplate: {
+						select: {
+							id: true,
+							title: true,
+						},
+					},
+					reviewedBy: {
+						select: {
+							id: true,
+							firstName: true,
+							lastName: true,
+							email: true,
+						},
+					},
+				},
+			});
+
+			await notifyStudentForSubmissionReturned(updated);
+
+			return res.json({
+				message: "Submission returned to draft successfully",
 				submission: updated,
 			});
 		} catch (e) {

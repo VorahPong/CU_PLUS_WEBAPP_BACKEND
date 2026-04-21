@@ -6,17 +6,49 @@ const { requireAuth } = require("../../middleware/auth");
 
 const router = express.Router();
 
-function hashToken(token) {
-	return crypto.createHash("sha256").update(token).digest("hex");
+const nodemailer = require("nodemailer");
+
+function hashCode(code) {
+	return crypto.createHash("sha256").update(code).digest("hex");
 }
 
-function createSessionCookie(res, token) {
-	res.cookie("session_id", token, {
-		httpOnly: true,
-		secure: false, // true in production with HTTPS
-		sameSite: "lax",
-		maxAge: 1000 * 60 * 60 * 24 * 7, // 7 days
+function generateSixDigitCode() {
+	return Math.floor(100000 + Math.random() * 900000).toString();
+}
+
+async function sendTwoFactorEmail(toEmail, code) {
+	const transporter = nodemailer.createTransport({
+		host: process.env.SMTP_HOST,
+		port: Number(process.env.SMTP_PORT || 587),
+		secure: false,
+		auth: {
+			user: process.env.SMTP_USER,
+			pass: process.env.SMTP_PASS,
+		},
 	});
+
+	await transporter.sendMail({
+		from: process.env.MAIL_FROM,
+		to: toEmail,
+		subject: "Your CU Plus verification code",
+		text: `Your verification code is ${code}. It expires in 10 minutes.`,
+	});
+}
+
+async function createLoginSession(res, userId) {
+	const rawToken = crypto.randomBytes(32).toString("hex");
+	const tokenHash = hashToken(rawToken);
+	const expiresAt = new Date(Date.now() + 1000 * 60 * 60 * 24 * 7);
+
+	await prisma.session.create({
+		data: {
+			userId,
+			tokenHash,
+			expiresAt,
+		},
+	});
+
+	createSessionCookie(res, rawToken);
 }
 
 /**
@@ -109,44 +141,38 @@ router.post("/login", async (req, res) => {
 			return res.status(401).json({ message: "Invalid credentials" });
 		}
 
-		await prisma.session.deleteMany({
-			where: {
-				userId: user.id,
-			},
-		});
-
 		if (!user.isActive) {
 			return res.status(403).json({
 				message: "This account has been deactivated",
 			});
 		}
 
-		const rawToken = crypto.randomBytes(32).toString("hex");
-		const tokenHash = hashToken(rawToken);
+		// remove any old unused codes for this user
+		await prisma.emailTwoFactorCode.deleteMany({
+			where: {
+				userId: user.id,
+				usedAt: null,
+			},
+		});
 
-		const expiresAt = new Date(Date.now() + 1000 * 60 * 60 * 24 * 7);
+		const rawCode = generateSixDigitCode();
+		const codeHash = hashCode(rawCode);
+		const expiresAt = new Date(Date.now() + 1000 * 60 * 10); // 10 min
 
-		await prisma.session.create({
+		await prisma.emailTwoFactorCode.create({
 			data: {
 				userId: user.id,
-				tokenHash,
+				codeHash,
 				expiresAt,
 			},
 		});
 
-		createSessionCookie(res, rawToken);
+		await sendTwoFactorEmail(user.email, rawCode);
 
 		return res.json({
-			user: {
-				id: user.id,
-				email: user.email,
-				role: user.role,
-				firstName: user.firstName,
-				lastName: user.lastName,
-				name: user.name,
-				schoolId: user.schoolId,
-				year: user.year,
-			},
+			requiresTwoFactor: true,
+			email: user.email,
+			message: "Verification code sent",
 		});
 	} catch (e) {
 		return res.status(500).json({ message: "Server error", error: String(e) });
@@ -264,3 +290,152 @@ router.post("/logout", requireAuth, async (req, res) => {
 });
 
 module.exports = router;
+
+router.post("/verify-2fa", async (req, res) => {
+	try {
+		const { email, code } = req.body;
+
+		if (!email || !code) {
+			return res.status(400).json({ message: "Email and code are required" });
+		}
+
+		const user = await prisma.user.findUnique({
+			where: { email },
+		});
+
+		if (!user) {
+			return res.status(401).json({ message: "Invalid verification request" });
+		}
+
+		const latestCode = await prisma.emailTwoFactorCode.findFirst({
+			where: {
+				userId: user.id,
+				usedAt: null,
+			},
+			orderBy: {
+				createdAt: "desc",
+			},
+		});
+
+		if (!latestCode) {
+			return res.status(401).json({ message: "No verification code found" });
+		}
+
+		if (latestCode.expiresAt < new Date()) {
+			return res.status(401).json({ message: "Verification code expired" });
+		}
+
+		if (latestCode.attempts >= 5) {
+			return res.status(429).json({ message: "Too many attempts" });
+		}
+
+		const incomingHash = hashCode(code);
+
+		if (incomingHash !== latestCode.codeHash) {
+			await prisma.emailTwoFactorCode.update({
+				where: { id: latestCode.id },
+				data: {
+					attempts: { increment: 1 },
+				},
+			});
+
+			return res.status(401).json({ message: "Invalid verification code" });
+		}
+
+		await prisma.emailTwoFactorCode.update({
+			where: { id: latestCode.id },
+			data: {
+				usedAt: new Date(),
+			},
+		});
+
+		await prisma.session.deleteMany({
+			where: {
+				userId: user.id,
+			},
+		});
+
+		await createLoginSession(res, user.id);
+
+		return res.json({
+			user: {
+				id: user.id,
+				email: user.email,
+				role: user.role,
+				firstName: user.firstName,
+				lastName: user.lastName,
+				name: user.name,
+				schoolId: user.schoolId,
+				year: user.year,
+			},
+		});
+	} catch (e) {
+		return res.status(500).json({ message: "Server error", error: String(e) });
+	}
+});
+
+
+router.post("/resend-2fa", async (req, res) => {
+	try {
+		const { email } = req.body;
+
+		if (!email) {
+			return res.status(400).json({ message: "Email is required" });
+		}
+
+		const user = await prisma.user.findUnique({
+			where: { email },
+		});
+
+		if (!user) {
+			return res.status(401).json({ message: "Invalid request" });
+		}
+
+		const latestCode = await prisma.emailTwoFactorCode.findFirst({
+			where: {
+				userId: user.id,
+				usedAt: null,
+			},
+			orderBy: {
+				createdAt: "desc",
+			},
+		});
+
+		if (latestCode) {
+			const secondsSinceLastSend =
+				(Date.now() - new Date(latestCode.sentAt).getTime()) / 1000;
+
+			if (secondsSinceLastSend < 30) {
+				return res.status(429).json({
+					message: "Please wait before requesting another code",
+				});
+			}
+		}
+
+		await prisma.emailTwoFactorCode.deleteMany({
+			where: {
+				userId: user.id,
+				usedAt: null,
+			},
+		});
+
+		const rawCode = generateSixDigitCode();
+		const codeHash = hashCode(rawCode);
+		const expiresAt = new Date(Date.now() + 1000 * 60 * 10);
+
+		await prisma.emailTwoFactorCode.create({
+			data: {
+				userId: user.id,
+				codeHash,
+				expiresAt,
+			},
+		});
+
+		await sendTwoFactorEmail(user.email, rawCode);
+
+		return res.json({ message: "Verification code resent" });
+	} catch (e) {
+		console.error("LOGIN ERROR:", e); // trying to catch error. 
+		return res.status(500).json({ message: "Server error", error: String(e) });
+	}
+});

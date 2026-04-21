@@ -87,7 +87,9 @@ router.get("/tree", requireAuth, async (req, res) => {
 						? {
 								submissions: {
 									where: {
-										status: "submitted",
+										status: {
+											in: ["submitted", "graded"],
+										},
 									},
 									select: {
 										id: true,
@@ -126,7 +128,9 @@ router.get("/tree", requireAuth, async (req, res) => {
 			return {
 				...form,
 				submission,
-				isSubmitted: submission?.status === "submitted",
+				isSubmitted:
+					submission?.status === "submitted" ||
+					submission?.status === "graded",
 			};
 		});
 
