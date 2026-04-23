@@ -9,7 +9,7 @@ const swaggerSpec = require("./swagger");
 const app = express();
 app.use(
 	cors({
-		origin: "http://localhost:3000", // change to your Flutter web origin
+		origin: process.env.FRONTEND_URL, // change to your Flutter web origin
 		credentials: true,
 	}),
 );
@@ -62,4 +62,6 @@ app.use("/", profileRoutes);
 
 // start server
 const PORT = process.env.PORT || 4000;
-app.listen(PORT, () => console.log(`API on http://localhost:${PORT}`));
+app.listen(PORT, "0.0.0.0", () => {
+	console.log(`API running on port ${PORT}`);
+});
