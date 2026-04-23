@@ -10,6 +10,7 @@ function hashToken(token) {
 	return crypto.createHash("sha256").update(token).digest("hex");
 }
 
+// this is for AWS to work, rules are set differently on local host
 function getSessionCookieOptions() {
 	const frontendUrl = (process.env.FRONTEND_URL || "").trim();
 	const isHttpsFrontend = frontendUrl.startsWith("https://");
