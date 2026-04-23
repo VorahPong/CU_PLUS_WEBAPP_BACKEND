@@ -28,6 +28,7 @@ function getSessionCookieOptions() {
 	};
 }
 
+// 
 function createSessionCookie(res, token) {
 	res.cookie("session_id", token, getSessionCookieOptions());
 }
