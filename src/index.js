@@ -20,7 +20,7 @@ app.use(cookieParser());
 
 // health check (keep this)
 app.get("/health", (req, res) => {
-	res.json({ ok: true, message: "backend is running" });
+	res.json({ ok: true, message: "backend is running yes" });
 });
 
 // feature routes
