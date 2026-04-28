@@ -75,12 +75,22 @@ function buildCourseContentTree(folders, forms) {
 router.get("/tree", requireAuth, async (req, res) => {
 	try {
 		const isAdmin = req.user?.role === "admin";
+		const user = isAdmin
+			? null
+			: await prisma.user.findUnique({
+					where: { id: req.user.id },
+					select: {
+						id: true,
+						year: true,
+					},
+				});
 
 		const [folders, forms] = await Promise.all([
 			prisma.courseFolder.findMany({
 				orderBy: { sortOrder: "asc" },
 			}),
 			prisma.formTemplate.findMany({
+				where: isAdmin ? {} : { isActive: true },
 				orderBy: [{ sortOrder: "asc" }, { createdAt: "desc" }],
 				include: {
 					...(isAdmin
@@ -124,6 +134,7 @@ router.get("/tree", requireAuth, async (req, res) => {
 			}
 
 			const submission = form.submissions?.[0] ?? null;
+			const isAvailableToStudent = !form.year || form.year === user?.year;
 
 			return {
 				...form,
@@ -131,6 +142,11 @@ router.get("/tree", requireAuth, async (req, res) => {
 				isSubmitted:
 					submission?.status === "submitted" ||
 					submission?.status === "graded",
+				isAvailableToStudent,
+				isLocked: !isAvailableToStudent,
+				lockedReason: isAvailableToStudent
+					? null
+					: `Only available to ${form.year} year students`,
 			};
 		});
 
