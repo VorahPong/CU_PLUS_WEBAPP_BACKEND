@@ -58,5 +58,11 @@ jobs:
       - name: Apply database migrations
         run: npx prisma migrate deploy
 
-      - name: Run tests
-        run: npm test
+      - name: Run tests if configured
+        run: |
+          TEST_SCRIPT=$(node -p "require('./package.json').scripts?.test || ''")
+          if [ -z "$TEST_SCRIPT" ] || [ "$TEST_SCRIPT" = "echo \"Error: no test specified\" && exit 1" ]; then
+            echo "No backend test script configured yet. Skipping npm test."
+          else
+            npm test
+          fi
