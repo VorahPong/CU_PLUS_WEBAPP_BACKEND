@@ -953,13 +953,22 @@ router.patch(
 				},
 			});
 
-			await notifyStudentForSubmissionGraded(updated);
+			try {
+				await notifyStudentForSubmissionGraded(updated);
+			} catch (notificationError) {
+				console.error(
+					`Failed to send graded notification for submission ${submissionId}:`,
+					notificationError,
+				);
+			}
 
 			return res.json({
 				message: "Submission graded successfully",
 				submission: updated,
 			});
 		} catch (e) {
+			console.error(`Failed to grade submission ${req.params.submissionId}:`, e);
+
 			return res.status(500).json({
 				message: "Server error",
 				error: String(e),
