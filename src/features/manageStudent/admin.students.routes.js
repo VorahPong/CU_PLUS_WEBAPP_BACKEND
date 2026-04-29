@@ -472,6 +472,14 @@ router.get("/:id", requireAuth, requireAdmin, async (req, res) => {
  *               schoolId:
  *                 type: string
  *                 example: 900123456
+ *               year:
+ *                 type: string
+ *                 nullable: true
+ *                 example: "2"
+ *               isActive:
+ *                 type: boolean
+ *                 nullable: true
+ *                 example: true
  *     responses:
  *       200:
  *         description: Student updated successfully
@@ -491,7 +499,8 @@ router.get("/:id", requireAuth, requireAdmin, async (req, res) => {
 router.patch("/:id", requireAuth, requireAdmin, async (req, res) => {
 	try {
 		const { id } = req.params;
-		const { firstName, lastName, name, email, schoolId } = req.body;
+		const { firstName, lastName, name, email, schoolId, year, isActive } =
+			req.body;
 
 		const existing = await prisma.user.findFirst({
 			where: {
@@ -520,6 +529,18 @@ router.patch("/:id", requireAuth, requireAdmin, async (req, res) => {
 
 		if (schoolId != null && !schoolId.toString().trim()) {
 			return res.status(400).json({ message: "School ID cannot be empty" });
+		}
+
+		if (year !== undefined && !["1", "2", "3", "4"].includes(String(year))) {
+			return res.status(400).json({
+				message: "year must be 1, 2, 3, or 4",
+			});
+		}
+
+		if (isActive !== undefined && typeof isActive !== "boolean") {
+			return res.status(400).json({
+				message: "isActive must be a boolean",
+			});
 		}
 
 		const nextEmail = email != null ? email.toString().trim() : existing.email;
@@ -564,6 +585,8 @@ router.patch("/:id", requireAuth, requireAdmin, async (req, res) => {
 				name: name != null ? name.toString().trim() || null : existing.name,
 				email: nextEmail,
 				schoolId: nextSchoolId,
+				year: year !== undefined ? String(year) : existing.year,
+				isActive: typeof isActive === "boolean" ? isActive : existing.isActive,
 			},
 			select: {
 				id: true,

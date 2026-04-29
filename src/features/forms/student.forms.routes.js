@@ -68,11 +68,18 @@ router.get("/", requireAuth, async (req, res) => {
 
 		const formsWithAvailability = forms.map((form) => {
 			const submission = form.submissions?.[0] ?? null;
+			const isAvailableToStudent = !form.year || form.year === user.year;
+
 			return {
 				...form,
 				submission,
-				isSubmitted: submission?.status === "submitted",
-				isAvailableToStudent: !form.year || form.year === user.year,
+				isSubmitted:
+					submission?.status === "submitted" || submission?.status === "graded",
+				isAvailableToStudent,
+				isLocked: !isAvailableToStudent,
+				lockedReason: isAvailableToStudent
+					? null
+					: `Only available to ${form.year} year students`,
 			};
 		});
 
@@ -134,6 +141,7 @@ router.get("/:id", requireAuth, async (req, res) => {
 			where: {
 				id,
 				isActive: true,
+				OR: [{ year: null }, { year: user.year }],
 			},
 			include: {
 				fields: {
@@ -163,7 +171,9 @@ router.get("/:id", requireAuth, async (req, res) => {
 		return res.json({
 			form: {
 				...form,
-				isAvailableToStudent: !form.year || form.year === user.year,
+				isAvailableToStudent: true,
+				isLocked: false,
+				lockedReason: null,
 			},
 			submission,
 		});
