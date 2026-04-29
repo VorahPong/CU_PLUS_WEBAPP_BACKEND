@@ -326,11 +326,45 @@ router.get("/:id", requireAuth, requireAdmin, async (req, res) => {
 	}
 });
 
+// Helper functions for field comparison and update logic
+function normalizeFormFieldForComparison(field, index = 0) {
+	return {
+		label: normalizeTextForComparison(field?.label),
+		type: field?.type || "",
+		required: Boolean(field?.required),
+		placeholder: normalizeTextForComparison(field?.placeholder),
+		helpText: normalizeTextForComparison(field?.helpText),
+		sortOrder: field?.sortOrder ?? index,
+		configJson: normalizeConfigJsonForComparison(field?.configJson),
+	};
+}
+
+function normalizeTextForComparison(value) {
+	return value == null ? null : value.toString().trim() || null;
+}
+
+function normalizeConfigJsonForComparison(value) {
+	if (value == null) return null;
+	return JSON.stringify(value);
+}
+
+function didFormFieldsChange(existingFields, incomingFields) {
+	const oldFields = [...existingFields]
+		.sort((a, b) => a.sortOrder - b.sortOrder)
+		.map((field, index) => normalizeFormFieldForComparison(field, index));
+
+	const newFields = [...incomingFields]
+		.sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
+		.map((field, index) => normalizeFormFieldForComparison(field, index));
+
+	return JSON.stringify(oldFields) !== JSON.stringify(newFields);
+}
+
 /**
  * @swagger
  * /admin/forms/{id}:
  *   put:
- *     summary: Update a form template and replace its fields
+ *     summary: Update a form template. Field changes are blocked after submissions exist.
  *     tags: [Admin Forms]
  *     parameters:
  *       - in: path
@@ -436,6 +470,10 @@ router.put("/:id", requireAuth, requireAdmin, async (req, res) => {
 			});
 		}
 
+		const submissionCount = await prisma.formSubmission.count({
+			where: { formTemplateId: id },
+		});
+
 		if (!title || !title.trim()) {
 			return res.status(400).json({
 				message: "title is required",
@@ -473,6 +511,16 @@ router.put("/:id", requireAuth, requireAdmin, async (req, res) => {
 			}
 		}
 
+		const hasSubmissionsOrDrafts = submissionCount > 0;
+		const fieldsChanged = didFormFieldsChange(existing.fields, fields);
+
+		if (hasSubmissionsOrDrafts && fieldsChanged) {
+			return res.status(400).json({
+				message:
+					"This form already has student submissions or drafts, so its fields cannot be edited. You can still update title, instructions, due date, folder, year, sort order, or active status.",
+			});
+		}
+
 		if (folderId) {
 			const folder = await prisma.courseFolder.findUnique({
 				where: { id: folderId },
@@ -485,37 +533,23 @@ router.put("/:id", requireAuth, requireAdmin, async (req, res) => {
 			}
 		}
 
-		const updatedForm = await prisma.$transaction(async (tx) => {
-			await tx.formField.deleteMany({
-				where: { formTemplateId: id },
-			});
+		const baseUpdateData = {
+			title: title.trim(),
+			description: description?.trim() || null,
+			year: year || null,
+			folderId: folderId === undefined ? existing.folderId : folderId || null,
+			sortOrder: typeof sortOrder === "number" ? sortOrder : existing.sortOrder,
+			dueDate: dueDate ? new Date(dueDate) : null,
+			instructions: instructions?.trim() || null,
+			isActive: typeof isActive === "boolean" ? isActive : existing.isActive,
+		};
 
-			return tx.formTemplate.update({
+		let updatedForm;
+
+		if (hasSubmissionsOrDrafts) {
+			updatedForm = await prisma.formTemplate.update({
 				where: { id },
-				data: {
-					title: title.trim(),
-					description: description?.trim() || null,
-					year: year || null,
-					folderId:
-						folderId === undefined ? existing.folderId : folderId || null,
-					sortOrder:
-						typeof sortOrder === "number" ? sortOrder : existing.sortOrder,
-					dueDate: dueDate ? new Date(dueDate) : null,
-					instructions: instructions?.trim() || null,
-					isActive:
-						typeof isActive === "boolean" ? isActive : existing.isActive,
-					fields: {
-						create: fields.map((field, index) => ({
-							label: field.label.trim(),
-							type: field.type,
-							required: Boolean(field.required),
-							placeholder: field.placeholder?.trim() || null,
-							helpText: field.helpText?.trim() || null,
-							sortOrder: field.sortOrder ?? index,
-							configJson: field.configJson ?? null,
-						})),
-					},
-				},
+				data: baseUpdateData,
 				include: {
 					fields: {
 						orderBy: { sortOrder: "asc" },
@@ -523,7 +557,37 @@ router.put("/:id", requireAuth, requireAdmin, async (req, res) => {
 					folder: true,
 				},
 			});
-		});
+		} else {
+			updatedForm = await prisma.$transaction(async (tx) => {
+				await tx.formField.deleteMany({
+					where: { formTemplateId: id },
+				});
+
+				return tx.formTemplate.update({
+					where: { id },
+					data: {
+						...baseUpdateData,
+						fields: {
+							create: fields.map((field, index) => ({
+								label: field.label.trim(),
+								type: field.type,
+								required: Boolean(field.required),
+								placeholder: field.placeholder?.trim() || null,
+								helpText: field.helpText?.trim() || null,
+								sortOrder: field.sortOrder ?? index,
+								configJson: field.configJson ?? null,
+							})),
+						},
+					},
+					include: {
+						fields: {
+							orderBy: { sortOrder: "asc" },
+						},
+						folder: true,
+					},
+				});
+			});
+		}
 
 		return res.json({
 			message: "Form updated successfully",
@@ -1130,7 +1194,7 @@ function extractCloudinaryPublicId(url) {
  * @swagger
  * /admin/forms/{id}:
  *   delete:
- *     summary: Delete a form template
+ *     summary: Delete a form template only when it has no submissions
  *     tags: [Admin Forms]
  *     parameters:
  *       - in: path
@@ -1172,26 +1236,11 @@ router.delete("/:id", requireAuth, requireAdmin, async (req, res) => {
 			});
 		}
 
-		const signatureUrls = form.submissions.flatMap((submission) =>
-			submission.answers
-				.map((answer) => answer.valueSignatureUrl)
-				.filter((url) => typeof url === "string" && url.trim().length > 0),
-		);
-
-		for (const url of signatureUrls) {
-			const publicId = extractCloudinaryPublicId(url);
-			if (!publicId) continue;
-
-			try {
-				await cloudinary.uploader.destroy(publicId, {
-					resource_type: "image",
-				});
-			} catch (cloudinaryError) {
-				console.error(
-					`Failed to delete Cloudinary asset for form ${id}:`,
-					cloudinaryError,
-				);
-			}
+		if (form.submissions.length > 0) {
+			return res.status(400).json({
+				message:
+					"Cannot delete a form that already has submissions. Delete or archive the submissions first.",
+			});
 		}
 
 		await prisma.formTemplate.delete({

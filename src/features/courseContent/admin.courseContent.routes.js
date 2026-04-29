@@ -401,7 +401,7 @@ router.patch(
  * @swagger
  * /course-content/admin/folders/{id}:
  *   delete:
- *     summary: Delete folder and its descendants
+ *     summary: Delete an empty folder
  *     tags: [Course Content]
  */
 router.delete(
@@ -419,6 +419,20 @@ router.delete(
 			if (!existing) {
 				return res.status(404).json({
 					message: "Folder not found",
+				});
+			}
+			const childFolderCount = await prisma.courseFolder.count({
+				where: { parentId: id },
+			});
+
+			const formCount = await prisma.formTemplate.count({
+				where: { folderId: id },
+			});
+
+			if (childFolderCount > 0 || formCount > 0) {
+				return res.status(400).json({
+					message:
+						"Folder must be empty before it can be deleted. Move or delete its subfolders and forms first.",
 				});
 			}
 
